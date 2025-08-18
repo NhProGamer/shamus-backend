@@ -5,10 +5,8 @@ import (
 )
 
 type WitchRole struct {
-	Clans         []entities.Clan
-	Abilities     []entities.Ability
-	HasHealPotion bool
-	HasKillPotion bool
+	Clans     []entities.Clan
+	Abilities []entities.Ability
 }
 
 func (w *WitchRole) GetType() entities.RoleType { return entities.RoleWitch }
@@ -20,7 +18,8 @@ func (w *WitchRole) CanVote() bool             { return true }
 func (w *WitchRole) CanUseAbility() bool       { return true }
 func (w *WitchRole) GetClans() []entities.Clan { return w.Clans }
 func (w *WitchRole) GetPriority() entities.Priority {
-	if w.HasKillPotion || w.HasHealPotion {
+	sumConsumptions := entities.SumConsumptions(w.Abilities)
+	if sumConsumptions != nil && *sumConsumptions != 0 {
 		return 8
 	} else {
 		return 0

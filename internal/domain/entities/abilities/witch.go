@@ -35,6 +35,14 @@ func (p *PoisonAbility) GetDescription() string { return "Empoisonne un joueur" 
 func (p *PoisonAbility) CanUse(game *entities.Game, player *entities.Player) bool {
 	return p.Consumptions != nil && *p.Consumptions != 0 && game.Phase == entities.PhaseNight
 }
+func (p *PoisonAbility) GetConsumptions() *uint8 {
+	return p.Consumptions
+}
+func (p *PoisonAbility) Consume() {
+	if p.Consumptions != nil {
+		*p.Consumptions -= 1
+	}
+}
 func (p *PoisonAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
 	// Check erreurs etc...
 	return nil
