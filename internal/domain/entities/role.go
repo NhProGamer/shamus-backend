@@ -26,5 +26,5 @@ type Role interface {
 	GetClans() []Clan
 	AddClan(clan Clan)
 	GetPriority() Priority
-	GetAbilities() []Ability
+	GetAbilities() *[]Ability
 }

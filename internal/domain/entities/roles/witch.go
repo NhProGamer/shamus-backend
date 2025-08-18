@@ -17,6 +17,9 @@ func (w *WitchRole) GetDescription() string {
 func (w *WitchRole) CanVote() bool             { return true }
 func (w *WitchRole) CanUseAbility() bool       { return true }
 func (w *WitchRole) GetClans() []entities.Clan { return w.Clans }
+func (w *WitchRole) AddClan(clan entities.Clan) {
+	w.Clans = append(w.Clans, clan)
+}
 func (w *WitchRole) GetPriority() entities.Priority {
 	sumConsumptions := entities.SumConsumptions(w.Abilities)
 	if sumConsumptions != nil && *sumConsumptions != 0 {
