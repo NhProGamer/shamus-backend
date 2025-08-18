@@ -11,7 +11,7 @@ func NewEventService() ports.EventService {
 	return &eventService{}
 }
 
-func (s *eventService) SendEventToPlayer(event entities.Event) {
+func (s *eventService) SendEventToPlayer(event entities.Event, player entities.PlayerID) {
 	// Implémentation réelle utiliserait une queue ou WebSocket
 }
 
