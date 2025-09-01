@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Client WebSocket JSON</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    textarea, input { width: 100%; margin-top: 10px; }
+    #log { border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: auto; background: #f9f9f9; }
+  </style>
+</head>
+<body>
+  <h2>Client WebSocket JSON</h2>
+
+  <button id="connectBtn">Se connecter</button>
+  <div id="status">Statut : déconnecté</div>
+
+  <h3>Envoyer du JSON</h3>
+  <textarea id="jsonInput" rows="4">
+{ "action": "ping" }
+  </textarea>
+  <button id="sendBtn" disabled>Envoyer</button>
+
+  <h3>Messages reçus</h3>
+  <div id="log"></div>
+
+  <script>
+    let socket;
+
+    const statusEl = document.getElementById("status");
+    const logEl = document.getElementById("log");
+    const sendBtn = document.getElementById("sendBtn");
+
+    function log(message) {
+      const entry = document.createElement("div");
+      entry.textContent = message;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    document.getElementById("connectBtn").addEventListener("click", () => {
+      // ⚠️ Passer par ws:// ou wss:// selon ton serveur
+      socket = new WebSocket("ws://127.0.0.1:8080/app/ws/test-game");
+
+      socket.onopen = () => {
+        statusEl.textContent = "Statut : connecté ✅";
+        log("Connecté au serveur");
+        sendBtn.disabled = false;
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          log("Reçu : " + JSON.stringify(data, null, 2));
+        } catch (e) {
+          log("Reçu (non JSON) : " + event.data);
+        }
+      };
+
+      socket.onclose = () => {
+        statusEl.textContent = "Statut : déconnecté ❌";
+        log("Connexion fermée");
+        sendBtn.disabled = true;
+      };
+
+      socket.onerror = (err) => {
+        log("Erreur WebSocket : " + err.message);
+      };
+    });
+
+    sendBtn.addEventListener("click", () => {
+      const raw = document.getElementById("jsonInput").value;
+      try {
+        const json = JSON.parse(raw);
+        socket.send(JSON.stringify(json));
+        log("Envoyé : " + JSON.stringify(json));
+      } catch (e) {
+        alert("JSON invalide !");
+      }
+    });
+  </script>
+</body>
+</html>

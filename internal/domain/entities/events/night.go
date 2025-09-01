@@ -4,13 +4,13 @@ import "shamus-backend/internal/domain/entities"
 
 const EventTypeNight entities.EventType = "night"
 
-type NightEvent struct {
+type NightEventData struct {
 }
 
-func (e NightEvent) GetType() entities.EventType {
-	return EventTypeNight
-}
-
-func (e NightEvent) GetData() interface{} {
-	return e
+func NewNightEvent() entities.Event {
+	return entities.Event{
+		Channel: entities.EventChannelGameEvent,
+		Type:    EventTypeNight,
+		Data:    NightEventData{},
+	}
 }

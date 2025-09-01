@@ -10,19 +10,13 @@ type GameService interface {
 
 type VoteService interface {
 	NewVote(gameID entities.GameID) error
-	GetVotes(gameID entities.GameID) (map[entities.PlayerID]*entities.PlayerID, error)
-	CleanVotes(gameID entities.GameID) error
+	CloseVote(gameID entities.GameID) (*entities.PlayerID, error)
 	AddVote(gameID entities.GameID, playerID entities.PlayerID, target entities.PlayerID) error
 	RemoveVote(gameID entities.GameID, playerID entities.PlayerID) error
-	ComputeVotes(gameID entities.GameID) (*entities.PlayerID, error)
-}
-
-type AbilityService interface {
-	UseAbility(gameID entities.GameID, playerID entities.PlayerID, target entities.PlayerID) error
 }
 
 type EventService interface {
 	SendEventToPlayer(event entities.Event, player entities.PlayerID)
 	SendEventToGame(event entities.Event, gameID entities.GameID)
-	SendEventToClanInAGame(event entities.Event, gameID entities.GameID, clan entities.Clan)
+	//SendEventToClanInAGame(event entities.Event, gameID entities.GameID, clan entities.Clan)
 }

@@ -14,7 +14,8 @@ func (k *WerewolfKillAbility) GetDescription() string {
 	return "Élimine un joueur"
 }
 
-func (k *WerewolfKillAbility) CanUse(game *entities.Game, player *entities.Player) bool {
+func (k *WerewolfKillAbility) CanUse(game *entities.Game, player *entities.SafePlayer) bool {
+	// TODO: Ajouter les erreurs ici
 	return false
 }
 
@@ -26,6 +27,10 @@ func (k *WerewolfKillAbility) Consume() {
 	// No consumptions for this ability
 }
 
-func (k *WerewolfKillAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
+func (k *WerewolfKillAbility) Execute(game *entities.Game, player *entities.SafePlayer, target *entities.PlayerID, data map[string]interface{}) error {
 	return nil
+}
+
+func NewWerewolfKillAbility() entities.Ability {
+	return &WerewolfKillAbility{}
 }

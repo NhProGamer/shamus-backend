@@ -21,8 +21,6 @@ type Role interface {
 	GetType() RoleType
 	GetName() string
 	GetDescription() string
-	CanVote() bool
-	CanUseAbility() bool
 	GetClans() []Clan
 	AddClan(clan Clan)
 	GetPriority() Priority

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Shamus - Créer ou Rejoindre une partie</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Roboto:wght@300;400;700&display=swap"
+          rel="stylesheet">
+    <style>
+        .font-cinzel {
+            font-family: 'Cinzel', serif;
+        }
+
+        .font-roboto {
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .bg-deep-black {
+            background-color: #1B1B1B;
+        }
+
+        .bg-blood-red {
+            background-color: #8B0000;
+        }
+
+        .bg-night-blue {
+            background-color: #283593;
+        }
+
+        .text-silver {
+            color: #D3D3D3;
+        }
+
+        .text-off-white {
+            color: #F5F5F5;
+        }
+    </style>
+</head>
+<body class="bg-deep-black min-h-screen font-roboto">
+<!-- Navigation -->
+<nav class="bg-black py-4 shadow-lg">
+    <div class="container mx-auto px-4 flex justify-between items-center">
+        <a class="font-cinzel text-3xl text-off-white font-bold" href="/">Shamus</a>
+        <div class="space-x-6">
+            <a class="text-silver hover:text-off-white transition-colors" href="#">Règles</a>
+            <a class="text-silver hover:text-off-white transition-colors" href="#">À propos</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Main Content -->
+<div class="container mx-auto px-4 py-16">
+    <h2 class="font-cinzel text-4xl text-off-white text-center mb-12">Créer ou Rejoindre une partie</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-4xl mx-auto">
+        <!-- Create Game Section -->
+        <div class="bg-black p-8 rounded-lg">
+            <h3 class="font-cinzel text-2xl text-blood-red mb-6">Créer une partie</h3>
+            <form action="/game/create" class="space-y-6" method="post">
+                <div>
+                    <label class="text-silver block mb-2">Nom de la partie</label>
+                    <input class="w-full bg-deep-black text-off-white p-3 rounded-lg border border-night-blue focus:border-blood-red outline-none"
+                           name="gameName"
+                           placeholder="Entrez un nom" required type="text">
+                </div>
+                <button class="w-full bg-blood-red hover:bg-night-blue text-off-white font-bold py-3 px-6 rounded-lg transition-colors duration-300"
+                        type="submit">
+                    Créer la partie
+                </button>
+            </form>
+
+
+        </div>
+
+        <!-- Join Game Section -->
+        <div class="bg-black p-8 rounded-lg">
+            <h3 class="font-cinzel text-2xl text-blood-red mb-6">Rejoindre une partie</h3>
+            <form class="space-y-6" id="gameForm">
+                <div>
+                    <label class="text-silver block mb-2">Code de la partie</label>
+                    <input class="w-full bg-deep-black text-off-white p-3 rounded-lg border border-night-blue focus:border-blood-red outline-none"
+                           placeholder="Entrez le code"
+                           type="text"
+                           id="gameID">
+                </div>
+                <button type="submit" class="w-full bg-night-blue hover:bg-blood-red text-off-white font-bold py-3 px-6 rounded-lg transition-colors duration-300">
+                    Rejoindre la partie
+                </button>
+            </form>
+            <script>
+                document.getElementById('gameForm').addEventListener('submit', function(event) {
+                    event.preventDefault(); // Empêcher le formulaire de soumettre normalement
+                    var gameID = document.getElementById('gameID').value;
+                    window.location.href = '/game/play/' + gameID; // Rediriger vers l'URL avec le gameID
+                });
+            </script>
+        </div>
+    </div>
+</div>
+</body>
+</html>

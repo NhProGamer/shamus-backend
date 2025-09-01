@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Shamus - Loup-Garou en ligne</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Roboto:wght@300;400;700&display=swap"
+          rel="stylesheet">
+    <style>
+        .font-cinzel {
+            font-family: 'Cinzel', serif;
+        }
+
+        .font-roboto {
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .bg-deep-black {
+            background-color: #1B1B1B;
+        }
+
+        .bg-blood-red {
+            background-color: #8B0000;
+        }
+
+        .bg-night-blue {
+            background-color: #283593;
+        }
+
+        .text-silver {
+            color: #D3D3D3;
+        }
+
+        .text-off-white {
+            color: #F5F5F5;
+        }
+    </style>
+</head>
+<body class="bg-deep-black min-h-screen font-roboto">
+<!-- Navigation -->
+<nav class="bg-black py-4 shadow-lg">
+    <div class="container mx-auto px-4 flex justify-between items-center">
+        <h1 class="font-cinzel text-3xl text-off-white font-bold">Shamus</h1>
+        <div class="space-x-6">
+            <a class="text-silver hover:text-off-white transition-colors" href="#">Règles</a>
+            <a class="text-silver hover:text-off-white transition-colors" href="#">À propos</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Hero Section -->
+<div class="container mx-auto px-4 py-16">
+    <div class="text-center">
+        <h2 class="font-cinzel text-5xl text-off-white mb-8">Plongez dans la nuit</h2>
+        <p class="text-silver text-xl mb-12 max-w-2xl mx-auto">
+            Rejoignez la partie de Loup-Garou la plus immersive en ligne. Qui serez-vous ce soir : un villageois, un
+            loup-garou, ou peut-être la sorcière ?
+        </p>
+    </div>
+
+    <!-- Buttons Section -->
+    <div class="flex flex-col sm:flex-row justify-center gap-6 mt-8">
+        <a class="bg-blood-red hover:bg-night-blue text-off-white font-bold py-4 px-8 rounded-lg transition-colors duration-300 text-center text-lg shadow-lg transform hover:scale-105"
+           href="/game">
+            Jouer dès maintenant
+        </a>
+    </div>
+</div>
+
+<!-- Features Section -->
+<div class="container mx-auto px-4 py-16">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="bg-black p-6 rounded-lg">
+            <h3 class="font-cinzel text-2xl text-blood-red mb-4">Gratuit</h3>
+            <p class="text-silver">Jouez gratuitement avec vos amis sans limitation</p>
+        </div>
+        <div class="bg-black p-6 rounded-lg">
+            <h3 class="font-cinzel text-2xl text-blood-red mb-4">Simple</h3>
+            <p class="text-silver">Interface intuitive et règles claires</p>
+        </div>
+        <div class="bg-black p-6 rounded-lg">
+            <h3 class="font-cinzel text-2xl text-blood-red mb-4">Communauté</h3>
+            <p class="text-silver">Rejoignez une communauté active de joueurs</p>
+        </div>
+    </div>
+</div>
+</body>
+</html>

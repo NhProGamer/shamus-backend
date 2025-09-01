@@ -12,8 +12,6 @@ type SeerRole struct {
 func (s *SeerRole) GetType() entities.RoleType { return entities.RoleSeer }
 func (s *SeerRole) GetName() string            { return "Voyante" }
 func (s *SeerRole) GetDescription() string     { return "Peut voir le rôle d'un joueur chaque nuit" }
-func (s *SeerRole) CanVote() bool              { return true }
-func (s *SeerRole) CanUseAbility() bool        { return true }
 func (s *SeerRole) GetClans() []entities.Clan  { return s.Clans }
 func (s *SeerRole) AddClan(clan entities.Clan) {
 	s.Clans = append(s.Clans, clan)

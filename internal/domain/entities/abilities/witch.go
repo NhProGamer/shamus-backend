@@ -32,8 +32,9 @@ type PoisonAbility struct {
 
 func (p *PoisonAbility) GetName() string        { return "Empoisonner" }
 func (p *PoisonAbility) GetDescription() string { return "Empoisonne un joueur" }
-func (p *PoisonAbility) CanUse(game *entities.Game, player *entities.Player) bool {
+func (p *PoisonAbility) CanUse(game *entities.Game, player *entities.SafePlayer) bool {
 	return p.Consumptions != nil && *p.Consumptions != 0 && game.Phase == entities.PhaseNight
+	// TODO: Ajouter les erreurs ici
 }
 func (p *PoisonAbility) GetConsumptions() *uint8 {
 	return p.Consumptions
@@ -43,7 +44,19 @@ func (p *PoisonAbility) Consume() {
 		*p.Consumptions -= 1
 	}
 }
-func (p *PoisonAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
+func (p *PoisonAbility) Execute(game *entities.Game, player *entities.SafePlayer, target *entities.PlayerID, data map[string]interface{}) error {
 	// Check erreurs etc...
 	return nil
+}
+
+func NewHealAbility() *HealAbility {
+	return &HealAbility{
+		Consumptions: func(v uint8) *uint8 { return &v }(1),
+	}
+}
+
+func NewPoisonAbility() *PoisonAbility {
+	return &PoisonAbility{
+		Consumptions: func(v uint8) *uint8 { return &v }(1),
+	}
 }

@@ -2,17 +2,20 @@ package events
 
 import "shamus-backend/internal/domain/entities"
 
-const EventTypeExecution entities.EventType = "execution"
+const EventTypeDeath entities.EventType = "death"
 
-type ExecutionEvent struct {
-	KillerID *entities.PlayerID
-	VictimID *entities.PlayerID
+type ExecutionEventData struct {
+	Killer *entities.PlayerID `json:"killer,omitempty"`
+	Victim entities.PlayerID  `json:"victim"`
 }
 
-func (e ExecutionEvent) GetType() entities.EventType {
-	return EventTypeExecution
-}
-
-func (e ExecutionEvent) GetData() interface{} {
-	return e
+func NewDeathEvent(killer *entities.PlayerID, victim entities.PlayerID) entities.Event {
+	return entities.Event{
+		Channel: entities.EventChannelGameEvent,
+		Type:    EventTypeDeath,
+		Data: ExecutionEventData{
+			Killer: killer,
+			Victim: victim,
+		},
+	}
 }

@@ -14,8 +14,6 @@ func (w *WitchRole) GetName() string            { return "Sorcière" }
 func (w *WitchRole) GetDescription() string {
 	return "Possède une potion de vie et une potion de mort"
 }
-func (w *WitchRole) CanVote() bool             { return true }
-func (w *WitchRole) CanUseAbility() bool       { return true }
 func (w *WitchRole) GetClans() []entities.Clan { return w.Clans }
 func (w *WitchRole) AddClan(clan entities.Clan) {
 	w.Clans = append(w.Clans, clan)
