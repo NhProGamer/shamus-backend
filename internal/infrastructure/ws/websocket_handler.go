@@ -78,11 +78,11 @@ func (h *WebsocketHandler) Handle(c *gin.Context) {
 		// Le joueur n'existe pas
 
 		// Est ce que la game est en mode Waiting ?
-		if actualGame.Status == entities.GameStatusWaiting {
+		if actualGame.Status() == entities.GameStatusWaiting {
 			// Game en attente
 
 			// Est ce que la game est pleine ?
-			if len(actualGame.Players) == actualGame.Settings.MaxPlayers {
+			if len(actualGame.Players()) == actualGame.Settings().MaxPlayers {
 
 				// game pleine
 				log.Printf("game full: %s", gameID)
@@ -100,7 +100,7 @@ func (h *WebsocketHandler) Handle(c *gin.Context) {
 			}
 
 			// Ajouter le joueur à la partie
-			actualGame.Players = append(actualGame.Players, playerID)
+			actualGame.AddPlayer(playerID)
 
 			newPlayer = true
 		} else {

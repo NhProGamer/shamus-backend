@@ -38,19 +38,19 @@ func (s *gameService) NextPhase(gameID entities.GameID) error {
 		return err
 	}
 
-	switch game.Phase {
+	switch game.Phase() {
 	case entities.PhaseDay:
-		game.Phase = entities.PhaseVote
+		game.SetPhase(entities.PhaseDay)
 		break
 	case entities.PhaseNight:
-		game.Phase = entities.PhaseDay
-		game.Day++
+		game.SetPhase(entities.PhaseDay)
+		game.NextDay()
 		break
 	case entities.PhaseVote:
-		game.Phase = entities.PhaseNight
+		game.SetPhase(entities.PhaseNight)
 		break
 	case entities.PhaseStart:
-		game.Phase = entities.PhaseNight
+		game.SetPhase(entities.PhaseNight)
 		break
 	}
 
@@ -63,21 +63,21 @@ func (s *gameService) NextStep(gameID entities.GameID) error {
 		return err
 	}
 
-	switch game.Phase {
+	switch game.Phase() {
 	case entities.PhaseStart:
 		// Envoyer aux clients que la nuit a commencé
 		event := events.NewNightEvent()
-		s.eventService.SendEventToGame(event, game.ID)
+		s.eventService.SendEventToGame(event, game.ID())
 
 		// Attribuer les rôles aux joueurs aléatoirement
-		rand.Shuffle(len(game.Players), func(i, j int) {
-			game.Players[i], game.Players[j] = game.Players[j], game.Players[i]
+		rand.Shuffle(len(game.Players()), func(i, j int) {
+			game.Players()[i], game.Players()[j] = game.Players()[j], game.Players()[i]
 		})
 		actualPlayerInList := 0
 
-		for role, nb := range game.Settings.Roles {
+		for role, nb := range game.Settings().Roles {
 			for i := 0; i < nb; i++ {
-				playerID := game.Players[actualPlayerInList]
+				playerID := game.Players()[actualPlayerInList]
 				actualPlayer, _ := s.playerRepo.GetPlayerByID(playerID)
 				pRole := factories.GetNewRole(role)
 				actualPlayer.AssignRole(&pRole)
@@ -95,25 +95,25 @@ func (s *gameService) NextStep(gameID entities.GameID) error {
 		event := events.NewDayEvent([]entities.PlayerID{
 			// TODO: Ajouter les joueurs morts durant la nuit
 		})
-		s.eventService.SendEventToGame(event, game.ID)
+		s.eventService.SendEventToGame(event, game.ID())
 
-		isGameEnded, _ := s.IsGameEnded(game.ID)
+		isGameEnded, _ := s.IsGameEnded(game.ID())
 		if isGameEnded {
 			event := events.NewWinEvent([]entities.PlayerID{
 				// TODO: Ajouter les joueurs gagnants
 			})
-			s.eventService.SendEventToGame(event, game.ID)
+			s.eventService.SendEventToGame(event, game.ID())
 		}
 		return s.NextPhase(gameID)
 
 	case entities.PhaseVote:
 		// Envoyer aux clients que le vote commence
-		err := s.voteService.NewVote(game.ID)
+		err := s.voteService.NewVote(game.ID())
 
 		// TODO: Implémenter le timer pendant le vote
 
 		// Fermer le vote et tuer celui qui a été le plus voté
-		victim, err := s.voteService.CloseVote(game.ID)
+		victim, err := s.voteService.CloseVote(game.ID())
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,7 @@ func (s *gameService) NextStep(gameID entities.GameID) error {
 	case entities.PhaseNight:
 		// Envoyer aux clients que la nuit a commencé
 		event := events.NewNightEvent()
-		s.eventService.SendEventToGame(event, game.ID)
+		s.eventService.SendEventToGame(event, game.ID())
 
 		// TODO: Imlémenter le systeme de tours avec timer pour que les gens jouent la nuit et utilisent leurs capatités
 		// Chaque joueur ayant un role actif peut utiliser son pouvoir en suivant l'odre de priorité
@@ -160,7 +160,7 @@ func (s *gameService) IsGameEnded(gameID entities.GameID) (bool, error) {
 
 	// Compter les joueurs par clan
 	clanCount := make(map[entities.Clan]int)
-	for _, playerID := range game.Players {
+	for _, playerID := range game.Players() {
 		actualPlayer, _ := s.playerRepo.GetPlayerByID(playerID)
 		if actualPlayer.Alive() {
 			actualPlayerRole := *actualPlayer.Role()
@@ -177,11 +177,11 @@ func (s *gameService) IsGameEnded(gameID entities.GameID) (bool, error) {
 	switch {
 	case werewolves == 0:
 		// Victoire des villageois
-		game.Status = entities.GameStatusEnded
+		game.SetStatus(entities.GameStatusEnded)
 		return true, nil
 	case werewolves >= villagers:
 		// Victoire des loups-garous
-		game.Status = entities.GameStatusEnded
+		game.SetStatus(entities.GameStatusEnded)
 		return true, nil
 	}
 

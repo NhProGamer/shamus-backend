@@ -141,7 +141,7 @@ func (c *ClientConn) handleDisconnection(
 	eventService.SendEventToGame(event, *gameID)
 
 	// Traitement selon le statut de la partie
-	switch game.Status {
+	switch game.Status() {
 	case entities.GameStatusWaiting:
 		c.handleWaitingGameDisconnection(playerRepo, gameRepo, game)
 
@@ -149,7 +149,7 @@ func (c *ClientConn) handleDisconnection(
 		c.handleActiveGameDisconnection(playerRepo, eventService, player, timerManager)
 
 	default:
-		log.Printf("disconnect: unhandled game status %v for game %s", game.Status, *gameID)
+		log.Printf("disconnect: unhandled game status %v for game %s", game.Status(), *gameID)
 	}
 }
 
@@ -159,44 +159,39 @@ func (c *ClientConn) handleWaitingGameDisconnection(
 	gameRepo ports.GameRepository,
 	game *entities.Game,
 ) {
-	log.Printf("handling waiting game disconnection for player %s in game %s", c.PlayerID, game.ID)
-	actualGame, err := gameRepo.GetGameByID(game.ID)
+	log.Printf("handling waiting game disconnection for player %s in game %s", c.PlayerID, game.ID())
+	actualGame, err := gameRepo.GetGameByID(game.ID())
 	if err != nil || actualGame == nil {
-		log.Printf("waiting disconnect: game %s not found", game.ID)
+		log.Printf("waiting disconnect: game %s not found", game.ID())
 		return
 		// TODO: gérer ce problème
 	}
 
 	// Si c'est le dernier joueur, supprimer la partie et le joueur
-	if len(game.Players) == 1 {
-		log.Printf("last player leaving, deleting game %s", game.ID)
-		_ = gameRepo.DeleteGame(game.ID)
+	if len(game.Players()) == 1 {
+		log.Printf("last player leaving, deleting game %s", game.ID())
+		_ = gameRepo.DeleteGame(game.ID())
 		_ = playerRepo.DeletePlayer(c.PlayerID)
 		return
 	}
 
 	// Si le host part, choisir un nouveau host
-	if game.Host == c.PlayerID {
-		for _, pid := range game.Players {
+	if game.Host() == c.PlayerID {
+		for _, pid := range game.Players() {
 			if pid != c.PlayerID {
-				game.Host = pid
-				log.Printf("new host for game %s: %s", game.ID, pid)
+				game.ChangeHost(pid)
+				log.Printf("new host for game %s: %s", game.ID(), pid)
 				break
 			}
 		}
 	}
 
 	// Retirer le joueur de la liste des joueurs de la partie
-	for i, pid := range game.Players {
-		if pid == c.PlayerID {
-			game.Players = append(game.Players[:i], game.Players[i+1:]...)
-			break
-		}
-	}
+	game.RemovePlayer(c.PlayerID)
 
 	// Supprimer le joueur de la base de données
 	_ = playerRepo.DeletePlayer(c.PlayerID)
-	log.Printf("player %s removed from waiting game %s", c.PlayerID, game.ID)
+	log.Printf("player %s removed from waiting game %s", c.PlayerID, game.ID())
 
 }
 

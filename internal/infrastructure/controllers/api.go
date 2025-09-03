@@ -51,18 +51,15 @@ func (ctx *AppContext) PostGameHandler(c *gin.Context) {
 	if err != nil || player == nil {
 		id, _ := utils.GenerateID(8)
 		gameID := entities.GameID(id)
-		game := entities.Game{
-			ID:      gameID,
-			Status:  entities.GameStatusWaiting,
-			Players: []entities.PlayerID{playerID},
-			Host:    playerID,
-			Settings: entities.GameSettings{
-				MaxPlayers: 20,
-				MinPlayers: 5,
-				Roles:      nil,
-			},
-		}
-		ctx.GameRepo.CreateGame(&game)
+
+		gameSettings := entities.NewGameSettings(
+			20,
+			5,
+			nil,
+		)
+		game := entities.NewGame(gameID, playerID, gameSettings)
+
+		ctx.GameRepo.CreateGame(game)
 		actualPlayer := entities.NewSafePlayer(playerID, "", &gameID)
 		actualPlayer.Disconnect()
 		ctx.PlayerRepo.AddPlayer(actualPlayer)

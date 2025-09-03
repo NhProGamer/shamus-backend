@@ -38,17 +38,17 @@ func (r *GameRepositoryImpl) GetGameByID(id entities.GameID) (*entities.Game, er
 func (r *GameRepositoryImpl) CreateGame(game *entities.Game) error {
 	r.mu.Lock() // écriture safe de la map
 	defer r.mu.Unlock()
-	if _, exists := r.games[game.ID]; exists {
+	if _, exists := r.games[game.ID()]; exists {
 		return domain_errors.ErrGameAlreadyExists
 	}
-	r.games[game.ID] = game
+	r.games[game.ID()] = game
 	return nil
 }
 
 func (r *GameRepositoryImpl) DeleteGame(id entities.GameID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, playerID := range r.games[id].Players {
+	for _, playerID := range r.games[id].Players() {
 		if existingClient, exists := r.hub.Get(playerID); exists {
 			log.Printf("fermeture de l'ancienne connexion WebSocket pour le joueur %s", playerID)
 			r.hub.Unregister(playerID)

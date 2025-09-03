@@ -33,7 +33,7 @@ func (s *WSEventService) SendEventToPlayer(event entities.Event, player entities
 
 func (s *WSEventService) SendEventToGame(event entities.Event, gameID entities.GameID) {
 	actualGame, _ := s.GameRepo.GetGameByID(gameID)
-	for _, player := range actualGame.Players {
+	for _, player := range actualGame.Players() {
 		s.SendEventToPlayer(event, player)
 	}
 }
