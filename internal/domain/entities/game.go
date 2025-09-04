@@ -27,39 +27,30 @@ type Game struct {
 	day      int
 	players  []PlayerID
 	host     PlayerID
-	settings gameSettings
+	settings GameSettings
 }
 
-// GameSettings avec champs privés
-type gameSettings struct {
-	minPlayers int              `json:"min_players"`
-	maxPlayers int              `json:"max_players"`
-	roles      map[RoleType]int `json:"roles"`
+type GameSettings struct {
+	roles map[RoleType]int
 }
 
 // Constructeur pour Game
 func NewGame(id GameID, host PlayerID, settings GameSettings) *Game {
 	return &Game{
-		id:      id,
-		status:  GameStatusWaiting,
-		phase:   PhaseStart,
-		day:     1,
-		players: []PlayerID{host},
-		host:    host,
-		settings: gameSettings{
-			minPlayers: settings.MinPlayers,
-			maxPlayers: settings.MaxPlayers,
-			roles:      settings.Roles,
-		},
+		id:       id,
+		status:   GameStatusWaiting,
+		phase:    PhaseStart,
+		day:      1,
+		players:  []PlayerID{host},
+		host:     host,
+		settings: settings,
 	}
 }
 
 // Constructeur pour GameSettings
-func NewGameSettings(minPlayers, maxPlayers int, roles map[RoleType]int) GameSettings {
+func NewGameSettings(roles map[RoleType]int) GameSettings {
 	return GameSettings{
-		MinPlayers: minPlayers,
-		MaxPlayers: maxPlayers,
-		Roles:      roles,
+		roles: roles,
 	}
 }
 
@@ -93,9 +84,7 @@ func (g *Game) Host() PlayerID {
 
 func (g *Game) Settings() GameSettings {
 	return GameSettings{
-		MinPlayers: g.settings.minPlayers,
-		MaxPlayers: g.settings.maxPlayers,
-		Roles:      g.settings.roles,
+		roles: g.settings.roles,
 	}
 }
 
@@ -125,7 +114,7 @@ func (g *Game) NextDay() {
 }
 
 func (g *Game) AddPlayer(playerID PlayerID) error {
-	if len(g.players) >= g.settings.maxPlayers {
+	if g.IsFull() {
 		return errors.New("nombre maximum de joueurs atteint")
 	}
 
@@ -161,11 +150,16 @@ func (g *Game) ChangeHost(newHost PlayerID) error {
 	return errors.New("le nouveau host doit être un joueur de la partie")
 }
 
+func (g *Game) TotalRoles() (total int) {
+	for _, count := range g.settings.roles {
+		total += count
+	}
+	return total
+}
+
 // Méthodes de validation
-func (g *Game) CanStart() bool {
-	return len(g.players) >= g.settings.minPlayers &&
-		len(g.players) <= g.settings.maxPlayers &&
-		g.status == GameStatusWaiting
+func (g *Game) IsFull() bool {
+	return len(g.players) == g.TotalRoles()
 }
 
 func (g *Game) IsActive() bool {
@@ -174,10 +168,4 @@ func (g *Game) IsActive() bool {
 
 func (g *Game) IsEnded() bool {
 	return g.status == GameStatusEnded
-}
-
-type GameSettings struct {
-	MinPlayers int              `json:"min_players"`
-	MaxPlayers int              `json:"max_players"`
-	Roles      map[RoleType]int `json:"roles"`
 }

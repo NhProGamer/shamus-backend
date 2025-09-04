@@ -36,10 +36,7 @@ func main() {
 
 	testGameID := entities.GameID("test-game")
 	//TEST pour la connection
-	testGameSettings := entities.NewGameSettings(
-		10,
-		4,
-		nil)
+	testGameSettings := entities.NewGameSettings(nil)
 	testGame := entities.NewGame(testGameID, "363391883755651072", testGameSettings)
 
 	testPlayer := entities.NewSafePlayer("363391883755651072", "TestPlayer", &testGameID)

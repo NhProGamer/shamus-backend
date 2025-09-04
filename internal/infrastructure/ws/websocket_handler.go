@@ -82,7 +82,7 @@ func (h *WebsocketHandler) Handle(c *gin.Context) {
 			// Game en attente
 
 			// Est ce que la game est pleine ?
-			if len(actualGame.Players()) == actualGame.Settings().MaxPlayers {
+			if actualGame.IsFull() {
 
 				// game pleine
 				log.Printf("game full: %s", gameID)
