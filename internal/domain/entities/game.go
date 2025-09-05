@@ -40,7 +40,7 @@ func NewGame(id GameID, host PlayerID, settings GameSettings) *Game {
 		id:       id,
 		status:   GameStatusWaiting,
 		phase:    PhaseStart,
-		day:      1,
+		day:      0,
 		players:  []PlayerID{host},
 		host:     host,
 		settings: settings,

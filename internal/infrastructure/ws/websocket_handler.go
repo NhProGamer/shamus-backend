@@ -185,6 +185,29 @@ func (h *WebsocketHandler) closeExistingConnection(playerID entities.PlayerID) {
 
 // sendConnectionEvent envoie l'événement de connexion approprié
 func (h *WebsocketHandler) sendConnectionEvent(playerID entities.PlayerID, gameID entities.GameID, isNewPlayer bool) {
+	actualGame, _ := h.gameRepo.GetGameByID(gameID)
+	playersData := []events.PlayersDetailsData{}
+	for _, pID := range actualGame.Players() {
+		player, err := h.playerRepo.GetPlayerByID(pID)
+		if err != nil || player == nil {
+			continue
+		}
+		playerData := events.PlayersDetailsData{
+			ID:    player.ID(),
+			Alive: player.Alive(),
+			Role: func() *entities.RoleType {
+				if (!player.Alive() || player.ID() == playerID) && player.Role() != nil {
+					rt := (*player.Role()).GetType()
+					return &rt
+				}
+				return nil
+			}(),
+			Target:         player.VotedFor(),
+			ConnexionState: player.ConnectionState(),
+		}
+		playersData = append(playersData, playerData)
+	}
+
 	if isNewPlayer {
 		event := events.NewConnexionEvent(playerID)
 		h.eventService.SendEventToGame(event, gameID)
@@ -192,6 +215,18 @@ func (h *WebsocketHandler) sendConnectionEvent(playerID entities.PlayerID, gameI
 		event := events.NewReconnexionEvent(playerID)
 		h.eventService.SendEventToGame(event, gameID)
 	}
+	event := events.NewGameDataEvent(
+		events.GameDataEventData{
+			ID:       gameID,
+			Status:   actualGame.Status(),
+			Phase:    actualGame.Phase(),
+			Day:      actualGame.Day(),
+			Players:  playersData,
+			Host:     actualGame.Host(),
+			Settings: actualGame.Settings(),
+		},
+	)
+	h.eventService.SendEventToPlayer(event, playerID)
 }
 
 // configureWebSocketConn configure les paramètres de la connexion WebSocket
