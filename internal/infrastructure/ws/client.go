@@ -143,7 +143,7 @@ func (c *ClientConn) handleDisconnection(
 	// Traitement selon le statut de la partie
 	switch game.Status() {
 	case entities.GameStatusWaiting:
-		c.handleWaitingGameDisconnection(playerRepo, gameRepo, game)
+		c.handleWaitingGameDisconnection(eventService, playerRepo, gameRepo, game)
 
 	case entities.GameStatusActive:
 		c.handleActiveGameDisconnection(playerRepo, eventService, player, timerManager)
@@ -155,6 +155,7 @@ func (c *ClientConn) handleDisconnection(
 
 // handleWaitingGameDisconnection gère la déconnexion pendant l'attente
 func (c *ClientConn) handleWaitingGameDisconnection(
+	eventService ports.EventService,
 	playerRepo ports.PlayerRepository,
 	gameRepo ports.GameRepository,
 	game *entities.Game,
@@ -168,6 +169,7 @@ func (c *ClientConn) handleWaitingGameDisconnection(
 	}
 
 	// Si c'est le dernier joueur, supprimer la partie et le joueur
+	log.Println(game.Players())
 	if len(game.Players()) == 1 {
 		log.Printf("last player leaving, deleting game %s", game.ID())
 		_ = gameRepo.DeleteGame(game.ID())
@@ -180,6 +182,8 @@ func (c *ClientConn) handleWaitingGameDisconnection(
 		for _, pid := range game.Players() {
 			if pid != c.PlayerID {
 				game.ChangeHost(pid)
+				event := events.NewHostChangeEvent(pid)
+				eventService.SendEventToGame(event, game.ID())
 				log.Printf("new host for game %s: %s", game.ID(), pid)
 				break
 			}
