@@ -93,6 +93,14 @@ func (g *Game) Players() []PlayerID {
 	return playersCopy
 }
 
+func (g *Game) ForEachPlayer(f func(PlayerID)) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	for _, p := range g.players {
+		f(p)
+	}
+}
+
 func (g *Game) Host() PlayerID {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
