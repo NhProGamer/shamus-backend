@@ -52,8 +52,7 @@ func (ctx *AppContext) PostGameHandler(c *gin.Context) {
 		id, _ := utils.GenerateID(8)
 		gameID := entities.GameID(id)
 
-		gameSettings := entities.NewGameSettings(nil)
-		game := entities.NewGame(gameID, playerID, gameSettings)
+		game := entities.NewGame(gameID, playerID)
 
 		ctx.GameRepo.CreateGame(game)
 		actualPlayer := entities.NewSafePlayer(playerID, "", &gameID)

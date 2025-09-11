@@ -133,6 +133,14 @@ func (g *Game) SetSettings(gameSettings *GameSettings) error {
 			return errors.New("rôle invalide dans les paramètres du jeu: " + string(role))
 		}
 	}
+	keys := make([]RoleType, 0, len(gameSettings.Roles))
+	for k := range gameSettings.Roles {
+		keys = append(keys, k)
+	}
+	if !HasRequiredClans(GetClansFromRoles(keys)) {
+		return errors.New("les paramètres du jeu doivent inclure au moins un villageois et un loup-garou ou un rogue")
+	}
+
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.settings = *gameSettings

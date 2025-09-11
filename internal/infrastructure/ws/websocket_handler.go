@@ -3,6 +3,7 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -64,89 +65,56 @@ func (h *WebsocketHandler) Handle(c *gin.Context) {
 	}
 
 	actualGame, err := h.gameRepo.GetGameByID(gameID)
-	// Est ce que la game existe ?
 	if err != nil || actualGame == nil {
-		// Game n'existe pas
 		log.Printf("game not found: %s", gameID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": ErrGameNotFound.Error()})
 		return
 	}
-	//Game existe
 
 	actualPlayer, err := h.playerRepo.GetPlayerByID(playerID)
-	if actualPlayer == nil || err != nil {
-		// Le joueur n'existe pas
-
-		// Est ce que la game est en mode Waiting ?
-		if actualGame.Status() == entities.GameStatusWaiting {
-			// Game en attente
-
-			// Est ce que la game est pleine ?
-			if actualGame.IsFull() {
-
-				// game pleine
-				log.Printf("game full: %s", gameID)
-				c.JSON(http.StatusBadRequest, gin.H{"error": ErrGameFull.Error()})
-				return
-			}
-			// Game pas pleine
-
-			// Créer le joueur
-			player := entities.NewSafePlayer(playerID, "", &gameID)
-			if err := h.playerRepo.AddPlayer(player); err != nil {
-				log.Printf("error adding player: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": ErrInternalServer.Error()})
-				return
-			}
-
-			// Ajouter le joueur à la partie
-			actualGame.AddPlayer(playerID)
-
-			newPlayer = true
-		} else {
-			// Game pas en attente
+	switch {
+	case actualPlayer == nil || err != nil:
+		if actualGame.Status() != entities.GameStatusWaiting {
 			log.Printf("game %s is active", gameID)
 			c.JSON(http.StatusBadRequest, gin.H{"error": ErrGameActive.Error()})
 			return
 		}
-	} else {
-		// Le joueur existe
-
-		// Le joueur se reconecte a la bonne partie ?
-		if *actualPlayer.GetGameID() != gameID {
-			// Le joueur tente de rejoindre une partie à laquelle il n'appartient pas
-			log.Printf("player %s trying to join game %s but belongs to game %s", playerID, gameID, *actualPlayer.GetGameID())
-			c.JSON(http.StatusBadRequest, gin.H{"error": ErrPlayerNotInGame.Error()})
+		if actualGame.IsFull() {
+			log.Printf("game full: %s", gameID)
+			c.JSON(http.StatusBadRequest, gin.H{"error": ErrGameFull.Error()})
 			return
 		}
+		player := entities.NewSafePlayer(playerID, "", &gameID)
+		if err := h.playerRepo.AddPlayer(player); err != nil {
+			log.Printf("error adding player: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": ErrInternalServer.Error()})
+			return
+		}
+		actualGame.AddPlayer(playerID)
+		newPlayer = true
+	case *actualPlayer.GetGameID() != gameID:
+		log.Printf("player %s trying to join game %s but belongs to game %s", playerID, gameID, *actualPlayer.GetGameID())
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrPlayerNotInGame.Error()})
+		return
 	}
 
-	// Annuler le timer d'inactivité s'il existe
 	h.cancelInactivityTimer(playerID)
-
-	// Fermer toute connexion WebSocket existante pour ce joueur
 	h.closeExistingConnection(playerID)
 
-	// Upgrade de la connexion HTTP vers WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("websocket upgrade error: %v", err)
 		return
 	}
-
-	// Configuration de la connexion WebSocket
 	h.configureWebSocketConn(conn)
 
-	// Création et enregistrement du nouveau client
 	client := NewClientConn(playerID, conn)
 	h.hub.Register(playerID, client)
 
-	// Envoyer l'événement approprié selon le type de connexion
 	h.sendConnectionEvent(playerID, gameID, newPlayer)
 
 	log.Printf("player %s connected to game %s (new: %v)", playerID, gameID, newPlayer)
 
-	// Lancement des goroutines de gestion
 	go h.handleWritePump(client)
 	go h.handleReadPump(client, ctx)
 }
@@ -186,47 +154,45 @@ func (h *WebsocketHandler) closeExistingConnection(playerID entities.PlayerID) {
 // sendConnectionEvent envoie l'événement de connexion approprié
 func (h *WebsocketHandler) sendConnectionEvent(playerID entities.PlayerID, gameID entities.GameID, isNewPlayer bool) {
 	actualGame, _ := h.gameRepo.GetGameByID(gameID)
-	playersData := []events.PlayersDetailsData{}
-	for _, pID := range actualGame.Players() {
+	players := actualGame.Players()
+	playersData := make([]events.PlayersDetailsData, 0, len(players))
+	for _, pID := range players {
 		player, err := h.playerRepo.GetPlayerByID(pID)
 		if err != nil || player == nil {
 			continue
 		}
-		playerData := events.PlayersDetailsData{
-			ID:    player.ID(),
-			Alive: player.Alive(),
-			Role: func() *entities.RoleType {
-				if (!player.Alive() || player.ID() == playerID) && player.Role() != nil {
-					rt := (*player.Role()).GetType()
-					return &rt
-				}
-				return nil
-			}(),
+		var role *entities.RoleType
+		if (!player.Alive() || player.ID() == playerID) && player.Role() != nil {
+			rt := (*player.Role()).GetType()
+			role = &rt
+		}
+		playersData = append(playersData, events.PlayersDetailsData{
+			ID:             player.ID(),
+			Alive:          player.Alive(),
+			Role:           role,
 			Target:         player.VotedFor(),
 			ConnexionState: player.ConnectionState(),
-		}
-		playersData = append(playersData, playerData)
+		})
 	}
 
+	var event entities.Event
 	if isNewPlayer {
-		event := events.NewConnexionEvent(playerID)
-		h.eventService.SendEventToGame(event, gameID)
+		event = events.NewConnexionEvent(playerID)
 	} else {
-		event := events.NewReconnexionEvent(playerID)
-		h.eventService.SendEventToGame(event, gameID)
+		event = events.NewReconnexionEvent(playerID)
 	}
-	event := events.NewGameDataEvent(
-		events.GameDataEventData{
-			ID:       gameID,
-			Status:   actualGame.Status(),
-			Phase:    actualGame.Phase(),
-			Day:      actualGame.Day(),
-			Players:  playersData,
-			Host:     actualGame.Host(),
-			Settings: actualGame.Settings(),
-		},
-	)
-	h.eventService.SendEventToPlayer(event, playerID)
+	h.eventService.SendEventToGame(event, gameID)
+
+	gameDataEvent := events.NewGameDataEvent(events.GameDataEventData{
+		ID:       gameID,
+		Status:   actualGame.Status(),
+		Phase:    actualGame.Phase(),
+		Day:      actualGame.Day(),
+		Players:  playersData,
+		Host:     actualGame.Host(),
+		Settings: actualGame.Settings(),
+	})
+	h.eventService.SendEventToPlayer(gameDataEvent, playerID)
 }
 
 // configureWebSocketConn configure les paramètres de la connexion WebSocket
@@ -273,11 +239,46 @@ func (h *WebsocketHandler) handleReadPump(client *ClientConn, ctx context.Contex
 func (h *WebsocketHandler) handleMessage(ctx context.Context, playerID entities.PlayerID, msg []byte) {
 	log.Printf("message de %s: %s", playerID, string(msg))
 
-	// TODO: Implémenter le dispatch vers l'application layer
-	// Exemple:
-	// if err := h.messageHandler.HandleMessage(ctx, playerID, msg); err != nil {
-	//     log.Printf("erreur lors du traitement du message: %v", err)
-	// }
+	var result entities.Event
+	if err := json.Unmarshal(msg, &result); err != nil {
+		log.Println("invalid message format:", err)
+		return
+	}
+
+	actualPlayer, _ := h.playerRepo.GetPlayerByID(playerID)
+	actualGame, _ := h.gameRepo.GetGameByID(*actualPlayer.GetGameID())
+
+	switch result.GetChannel() {
+	case entities.EventChannelConnexion:
+		return // Ignorer les messages de connexion
+	case entities.EventChannelSettings:
+		if result.GetType() != events.EventTypeGameSettings {
+			break
+		}
+		if actualPlayer.ID() != actualGame.Host() {
+			log.Println("only host can change settings")
+			return
+		}
+		raw := result.GetData()
+		dataBytes, err := json.Marshal(raw)
+		if err != nil {
+			log.Println("erreur marshal Data:", err)
+			return
+		}
+		var settings events.GameSettingsEventData
+		if err := json.Unmarshal(dataBytes, &settings); err != nil {
+			log.Println("erreur decode GameSettingsEventData:", err)
+			return
+		}
+		gameSettings := entities.NewGameSettings(settings.RolesType)
+		if err := actualGame.SetSettings(&gameSettings); err != nil {
+			log.Println("erreur set GameSettings:", err)
+			return
+		}
+		h.eventService.SendEventToGame(events.NewGameSettingsEvent(events.GameSettingsEventData{RolesType: gameSettings.Roles}), actualGame.ID())
+	case entities.EventChannelGameEvent:
+		// TODO: gérer les votes
+	}
 }
 
 // cancelInactivityTimer annule le timer d'inactivité pour un joueur
