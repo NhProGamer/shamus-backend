@@ -5,20 +5,20 @@ import (
 )
 
 type HealAbility struct {
-	Consumptions *uint8
+	consumptions *uint8
 }
 
 func (h *HealAbility) GetName() string        { return "Guérir" }
 func (h *HealAbility) GetDescription() string { return "Sauve un joueur de la mort" }
 func (h *HealAbility) CanUse(game *entities.Game, player *entities.Player) bool {
-	return h.Consumptions != nil && *h.Consumptions != 0 && game.Phase == entities.PhaseNight
+	return h.consumptions != nil && *h.consumptions != 0
 }
 func (h *HealAbility) GetConsumptions() *uint8 {
-	return h.Consumptions
+	return h.consumptions
 }
 func (h *HealAbility) Consume() {
-	if h.Consumptions != nil {
-		*h.Consumptions -= 1
+	if h.consumptions != nil {
+		*h.consumptions -= 1
 	}
 }
 func (h *HealAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
@@ -27,21 +27,21 @@ func (h *HealAbility) Execute(game *entities.Game, player *entities.Player, targ
 }
 
 type PoisonAbility struct {
-	Consumptions *uint8
+	consumptions *uint8
 }
 
 func (p *PoisonAbility) GetName() string        { return "Empoisonner" }
 func (p *PoisonAbility) GetDescription() string { return "Empoisonne un joueur" }
 func (p *PoisonAbility) CanUse(game *entities.Game, player *entities.SafePlayer) bool {
-	return p.Consumptions != nil && *p.Consumptions != 0 && game.Phase == entities.PhaseNight
+	return p.consumptions != nil && *p.consumptions != 0
 	// TODO: Ajouter les erreurs ici
 }
 func (p *PoisonAbility) GetConsumptions() *uint8 {
-	return p.Consumptions
+	return p.consumptions
 }
 func (p *PoisonAbility) Consume() {
-	if p.Consumptions != nil {
-		*p.Consumptions -= 1
+	if p.consumptions != nil {
+		*p.consumptions -= 1
 	}
 }
 func (p *PoisonAbility) Execute(game *entities.Game, player *entities.SafePlayer, target *entities.PlayerID, data map[string]interface{}) error {
@@ -51,12 +51,12 @@ func (p *PoisonAbility) Execute(game *entities.Game, player *entities.SafePlayer
 
 func NewHealAbility() *HealAbility {
 	return &HealAbility{
-		Consumptions: func(v uint8) *uint8 { return &v }(1),
+		consumptions: func(v uint8) *uint8 { return &v }(1),
 	}
 }
 
 func NewPoisonAbility() *PoisonAbility {
 	return &PoisonAbility{
-		Consumptions: func(v uint8) *uint8 { return &v }(1),
+		consumptions: func(v uint8) *uint8 { return &v }(1),
 	}
 }
