@@ -18,8 +18,8 @@ type VoteEventData struct {
 	Target *entities.PlayerID `json:"target,omitempty"`
 }
 
-func NewVoteEvent(voteType VoteEventType, player *entities.PlayerID, target *entities.PlayerID) entities.Event {
-	return entities.Event{
+func NewVoteEvent(voteType VoteEventType, player *entities.PlayerID, target *entities.PlayerID) entities.Event[VoteEventData] {
+	return entities.Event[VoteEventData]{
 		Type: EventTypeVote,
 		Data: VoteEventData{
 			Type:   voteType,

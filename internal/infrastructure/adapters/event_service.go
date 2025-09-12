@@ -17,7 +17,7 @@ func NewWSEventService(hub *ws.Hub, gr ports.GameRepository) *WSEventService {
 	return &WSEventService{Hub: hub, GameRepo: gr}
 }
 
-func (s *WSEventService) SendEventToPlayer(event entities.Event, player entities.PlayerID) {
+func (s *WSEventService) SendEventToPlayer(event entities.RawEvent, player entities.PlayerID) {
 	conn, ok := s.Hub.Get(player)
 	if !ok {
 		log.Printf("no active connection for player %s", player)
@@ -31,7 +31,7 @@ func (s *WSEventService) SendEventToPlayer(event entities.Event, player entities
 	conn.Send <- data
 }
 
-func (s *WSEventService) SendEventToGame(event entities.Event, gameID entities.GameID) {
+func (s *WSEventService) SendEventToGame(event entities.RawEvent, gameID entities.GameID) {
 	actualGame, _ := s.GameRepo.GetGameByID(gameID)
 	for _, player := range actualGame.Players() {
 		s.SendEventToPlayer(event, player)

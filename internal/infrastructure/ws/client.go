@@ -138,7 +138,7 @@ func (c *ClientConn) handleDisconnection(
 
 	// Envoyer l'événement de déconnexion
 	event := events.NewDeconnexionEvent(c.PlayerID)
-	eventService.SendEventToGame(event, *gameID)
+	eventService.SendEventToGame(event.ToRawEvent(), *gameID)
 
 	// Traitement selon le statut de la partie
 	switch game.Status() {
@@ -183,7 +183,7 @@ func (c *ClientConn) handleWaitingGameDisconnection(
 			if pid != c.PlayerID {
 				game.ChangeHost(pid)
 				event := events.NewHostChangeEvent(pid)
-				eventService.SendEventToGame(event, game.ID())
+				eventService.SendEventToGame(event.ToRawEvent(), game.ID())
 				log.Printf("new host for game %s: %s", game.ID(), pid)
 				break
 			}
@@ -263,13 +263,11 @@ func (c *ClientConn) startInactivityTimer(
 			log.Printf("player %s marked as inactive after 2 minutes", playerID)
 
 			// Marquer le joueur comme inactif
-			event := events.NewInactiveEvent(playerID)
-			eventService.SendEventToGame(event, gameID)
+			eventService.SendEventToGame(events.NewInactiveEvent(playerID).ToRawEvent(), gameID)
 			player.SetInactive()
 
 			// Exécuter le joueur inactif
-			event = events.NewDeathEvent(nil, playerID)
-			eventService.SendEventToGame(event, gameID)
+			eventService.SendEventToGame(events.NewDeathEvent(nil, playerID).ToRawEvent(), gameID)
 			player.Kill()
 
 			log.Printf("player %s executed due to inactivity", playerID)

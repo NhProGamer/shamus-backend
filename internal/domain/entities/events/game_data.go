@@ -22,8 +22,8 @@ type GameDataEventData struct {
 	Settings entities.GameSettings `json:"settings"`
 }
 
-func NewGameDataEvent(data GameDataEventData) entities.Event {
-	return entities.Event{
+func NewGameDataEvent(data GameDataEventData) entities.Event[GameDataEventData] {
+	return entities.Event[GameDataEventData]{
 		Channel: entities.EventChannelConnexion,
 		Type:    EventTypeGameData,
 		Data:    data,

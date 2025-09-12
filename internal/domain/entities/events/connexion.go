@@ -8,8 +8,8 @@ type ConnexionEvent struct {
 	PlayerID entities.PlayerID `json:"player"`
 }
 
-func NewConnexionEvent(playerID entities.PlayerID) entities.Event {
-	return entities.Event{
+func NewConnexionEvent(playerID entities.PlayerID) entities.Event[ConnexionEvent] {
+	return entities.Event[ConnexionEvent]{
 		Channel: entities.EventChannelConnexion,
 		Type:    EventTypeConnexion,
 		Data: ConnexionEvent{

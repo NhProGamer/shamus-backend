@@ -8,8 +8,8 @@ type WinEventData struct {
 	Winners []entities.PlayerID `json:"winners"`
 }
 
-func NewWinEvent(winners []entities.PlayerID) entities.Event {
-	return entities.Event{
+func NewWinEvent(winners []entities.PlayerID) entities.Event[WinEventData] {
+	return entities.Event[WinEventData]{
 		Channel: entities.EventChannelGameEvent,
 		Type:    EventTypeWin,
 		Data: WinEventData{

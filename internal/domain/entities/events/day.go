@@ -7,8 +7,8 @@ const EventTypeDay entities.EventType = "day"
 type DayEventData struct {
 }
 
-func NewDayEvent(deaths []entities.PlayerID) entities.Event {
-	return entities.Event{
+func NewDayEvent(deaths []entities.PlayerID) entities.Event[DayEventData] {
+	return entities.Event[DayEventData]{
 		Channel: entities.EventChannelGameEvent,
 		Type:    EventTypeDay,
 		Data:    DayEventData{},

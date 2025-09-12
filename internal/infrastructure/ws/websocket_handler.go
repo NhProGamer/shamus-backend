@@ -175,13 +175,11 @@ func (h *WebsocketHandler) sendConnectionEvent(playerID entities.PlayerID, gameI
 		})
 	}
 
-	var event entities.Event
 	if isNewPlayer {
-		event = events.NewConnexionEvent(playerID)
+		h.eventService.SendEventToGame(events.NewConnexionEvent(playerID).ToRawEvent(), gameID)
 	} else {
-		event = events.NewReconnexionEvent(playerID)
+		h.eventService.SendEventToGame(events.NewReconnexionEvent(playerID).ToRawEvent(), gameID)
 	}
-	h.eventService.SendEventToGame(event, gameID)
 
 	gameDataEvent := events.NewGameDataEvent(events.GameDataEventData{
 		ID:       gameID,
@@ -192,7 +190,7 @@ func (h *WebsocketHandler) sendConnectionEvent(playerID entities.PlayerID, gameI
 		Host:     actualGame.Host(),
 		Settings: actualGame.Settings(),
 	})
-	h.eventService.SendEventToPlayer(gameDataEvent, playerID)
+	h.eventService.SendEventToPlayer(gameDataEvent.ToRawEvent(), playerID)
 }
 
 // configureWebSocketConn configure les paramètres de la connexion WebSocket
@@ -239,7 +237,7 @@ func (h *WebsocketHandler) handleReadPump(client *ClientConn, ctx context.Contex
 func (h *WebsocketHandler) handleMessage(ctx context.Context, playerID entities.PlayerID, msg []byte) {
 	log.Printf("message de %s: %s", playerID, string(msg))
 
-	var result entities.Event
+	var result entities.RawEvent
 	if err := json.Unmarshal(msg, &result); err != nil {
 		log.Println("invalid message format:", err)
 		return
@@ -248,34 +246,29 @@ func (h *WebsocketHandler) handleMessage(ctx context.Context, playerID entities.
 	actualPlayer, _ := h.playerRepo.GetPlayerByID(playerID)
 	actualGame, _ := h.gameRepo.GetGameByID(*actualPlayer.GetGameID())
 
-	switch result.GetChannel() {
+	switch result.Channel {
 	case entities.EventChannelConnexion:
 		return // Ignorer les messages de connexion
 	case entities.EventChannelSettings:
-		if result.GetType() != events.EventTypeGameSettings {
-			break
+		if result.Type != events.EventTypeGameSettings {
+			return
 		}
 		if actualPlayer.ID() != actualGame.Host() {
 			log.Println("only host can change settings")
 			return
 		}
-		raw := result.GetData()
-		dataBytes, err := json.Marshal(raw)
-		if err != nil {
-			log.Println("erreur marshal Data:", err)
-			return
-		}
+
 		var settings events.GameSettingsEventData
-		if err := json.Unmarshal(dataBytes, &settings); err != nil {
-			log.Println("erreur decode GameSettingsEventData:", err)
-			return
+		if err := json.Unmarshal(result.Data, &settings); err != nil {
+			panic(err)
 		}
+
 		gameSettings := entities.NewGameSettings(settings.RolesType)
 		if err := actualGame.SetSettings(&gameSettings); err != nil {
 			log.Println("erreur set GameSettings:", err)
 			return
 		}
-		h.eventService.SendEventToGame(events.NewGameSettingsEvent(events.GameSettingsEventData{RolesType: gameSettings.Roles}), actualGame.ID())
+		h.eventService.SendEventToGame(events.NewGameSettingsEvent(events.GameSettingsEventData{RolesType: gameSettings.Roles}).ToRawEvent(), actualGame.ID())
 	case entities.EventChannelGameEvent:
 		// TODO: gérer les votes
 	}

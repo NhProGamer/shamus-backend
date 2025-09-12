@@ -4,15 +4,15 @@ import "shamus-backend/internal/domain/entities"
 
 const EventTypeRoleAttribution entities.EventType = "win"
 
-type RoleAttributionEventData struct {
+type RoleRevealEventData struct {
 	Role entities.RoleType `json:"role"`
 }
 
-func NewRoleAttributionEvent(role entities.RoleType) entities.Event {
-	return entities.Event{
+func NewRoleAttributionEvent(role entities.RoleType) entities.Event[RoleRevealEventData] {
+	return entities.Event[RoleRevealEventData]{
 		Channel: entities.EventChannelGameEvent,
 		Type:    EventTypeRoleAttribution,
-		Data: RoleAttributionEventData{
+		Data: RoleRevealEventData{
 			Role: role,
 		},
 	}

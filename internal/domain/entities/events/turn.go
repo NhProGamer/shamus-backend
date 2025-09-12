@@ -7,8 +7,8 @@ const EventTypeTurn entities.EventType = "turn"
 type TurnEventData struct {
 }
 
-func NewTurnEvent() entities.Event {
-	return entities.Event{
+func NewTurnEvent() entities.Event[TurnEventData] {
+	return entities.Event[TurnEventData]{
 		Channel: entities.EventChannelGameEvent,
 		Type:    EventTypeTurn,
 		Data:    TurnEventData{},

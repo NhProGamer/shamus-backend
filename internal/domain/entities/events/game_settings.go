@@ -8,8 +8,8 @@ type GameSettingsEventData struct {
 	RolesType map[entities.RoleType]int `json:"roles"`
 }
 
-func NewGameSettingsEvent(data GameSettingsEventData) entities.Event {
-	return entities.Event{
+func NewGameSettingsEvent(data GameSettingsEventData) entities.Event[GameSettingsEventData] {
+	return entities.Event[GameSettingsEventData]{
 		Channel: entities.EventChannelSettings,
 		Type:    EventTypeGameSettings,
 		Data:    data,

@@ -8,8 +8,8 @@ type InactiveEventData struct {
 	PlayerID entities.PlayerID `json:"player"`
 }
 
-func NewInactiveEvent(playerID entities.PlayerID) entities.Event {
-	return entities.Event{
+func NewInactiveEvent(playerID entities.PlayerID) entities.Event[InactiveEventData] {
+	return entities.Event[InactiveEventData]{
 		Channel: entities.EventChannelConnexion,
 		Type:    EventTypeInactive,
 		Data: InactiveEventData{

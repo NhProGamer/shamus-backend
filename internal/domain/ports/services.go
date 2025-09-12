@@ -16,7 +16,7 @@ type VoteService interface {
 }
 
 type EventService interface {
-	SendEventToPlayer(event entities.Event, player entities.PlayerID)
-	SendEventToGame(event entities.Event, gameID entities.GameID)
+	SendEventToPlayer(event entities.RawEvent, player entities.PlayerID)
+	SendEventToGame(event entities.RawEvent, gameID entities.GameID)
 	//SendEventToClanInAGame(event entities.Event, gameID entities.GameID, clan entities.Clan)
 }

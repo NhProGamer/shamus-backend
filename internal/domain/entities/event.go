@@ -1,5 +1,7 @@
 package entities
 
+import "encoding/json"
+
 type EventType string
 
 type EventChannel string
@@ -11,20 +13,19 @@ const (
 	EventChannelTimer     EventChannel = "timer_event"
 )
 
-type Event struct {
+type Event[T any] struct {
 	Channel EventChannel `json:"channel"`
 	Type    EventType    `json:"type"`
-	Data    interface{}  `json:"data"`
+	Data    T            `json:"data"`
 }
 
-func (e Event) GetChannel() EventChannel {
-	return e.Channel
-}
+type RawEvent = Event[json.RawMessage]
 
-func (e Event) GetType() EventType {
-	return e.Type
-}
-
-func (e Event) GetData() interface{} {
-	return e.Data
+func (e Event[T]) ToRawEvent() RawEvent {
+	data, _ := json.Marshal(e.Data)
+	return RawEvent{
+		Channel: e.Channel,
+		Type:    e.Type,
+		Data:    data,
+	}
 }
