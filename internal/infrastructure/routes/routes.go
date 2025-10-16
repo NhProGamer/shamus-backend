@@ -1,20 +1,20 @@
 package routes
 
 import (
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"shamus-backend/internal/infrastructure/controllers"
 	"shamus-backend/internal/infrastructure/middlewares"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-gonic/gin"
 )
 
 func InitRoutes(r *gin.Engine, ctx *controllers.AppContext) {
-	r.Static("/static", "./frontend/static")
-	r.LoadHTMLGlob("web/html/*")
+	//r.Static("/static", "./web/static")
+	r.Static("/_next", "./web/static/_next")
+	//r.LoadHTMLGlob("web/html/*")
 
-	r.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", gin.H{})
-	})
+	r.StaticFile("/", "./web/static/index.html")
 	r.GET("/login", ctx.LoginHandler)
 	r.GET("/callback", ctx.CallbackHandler)
 
@@ -22,10 +22,10 @@ func InitRoutes(r *gin.Engine, ctx *controllers.AppContext) {
 	protected := r.Group("/app")
 	protected.Use(middlewares.DiscordAuthMiddleware())
 
-	protected.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "test.html", gin.H{})
-	})
+	protected.StaticFile("/", "./web/static/app.html")
+	protected.StaticFile("/game", "./web/static/app/game.html")
 	protected.GET("/ws/:gameID", ctx.WebsocketHandler.Handle)
+
 	api := protected.Group("/api/v1")
 	api.GET("/test", func(c *gin.Context) {
 		session := sessions.Default(c)

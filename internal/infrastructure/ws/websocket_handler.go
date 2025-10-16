@@ -175,12 +175,6 @@ func (h *WebsocketHandler) sendConnectionEvent(playerID entities.PlayerID, gameI
 		})
 	}
 
-	if isNewPlayer {
-		h.eventService.SendEventToGame(events.NewConnexionEvent(playerID).ToRawEvent(), gameID)
-	} else {
-		h.eventService.SendEventToGame(events.NewReconnexionEvent(playerID).ToRawEvent(), gameID)
-	}
-
 	gameDataEvent := events.NewGameDataEvent(events.GameDataEventData{
 		ID:       gameID,
 		Status:   actualGame.Status(),
@@ -191,6 +185,12 @@ func (h *WebsocketHandler) sendConnectionEvent(playerID entities.PlayerID, gameI
 		Settings: actualGame.Settings(),
 	})
 	h.eventService.SendEventToPlayer(gameDataEvent.ToRawEvent(), playerID)
+
+	if isNewPlayer {
+		h.eventService.SendEventToGame(events.NewConnexionEvent(playerID).ToRawEvent(), gameID)
+	} else {
+		h.eventService.SendEventToGame(events.NewReconnexionEvent(playerID).ToRawEvent(), gameID)
+	}
 }
 
 // configureWebSocketConn configure les paramètres de la connexion WebSocket

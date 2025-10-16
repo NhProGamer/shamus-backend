@@ -8,7 +8,7 @@ type Vote struct {
 	Type   VoteType
 	Status VoteStatus
 
-	// Intégrer une notion de temps de vote, démarrage, fermeture etc...
+	// TODO: Intégrer une notion de temps de vote, démarrage, fermeture etc...
 	EligibleVoters  []PlayerID
 	EligibleTargets []PlayerID
 	Ballots         map[PlayerID]*PlayerID

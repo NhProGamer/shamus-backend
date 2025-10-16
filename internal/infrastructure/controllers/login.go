@@ -3,10 +3,11 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-gonic/gin"
 )
 
 type DiscordUser struct {
@@ -66,7 +67,7 @@ func (ctx *AppContext) CallbackHandler(c *gin.Context) {
 	session.Set("authenticated", true)
 	session.Set("userID", userID)
 	session.Save()
-	c.Redirect(http.StatusTemporaryRedirect, ctx.Config.Server.PublicUrl+"/game/test")
+	c.Redirect(http.StatusTemporaryRedirect, ctx.Config.Server.PublicUrl+"/app")
 }
 
 func getUserID(accessToken string) (string, error) {
