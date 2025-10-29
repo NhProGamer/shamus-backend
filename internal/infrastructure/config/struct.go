@@ -1,10 +1,9 @@
 package config
 
 type Config struct {
-	Server   ServerConfig  `yaml:"server"`
-	Discord  DiscordConfig `yaml:"bot"`
-	Database MongoConfig   `yaml:"database"`
-	Debug    bool          `yaml:"debug"`
+	Server  ServerConfig  `yaml:"server"`
+	Discord DiscordConfig `yaml:"bot"`
+	Debug   bool          `yaml:"debug"`
 }
 
 type ServerConfig struct {
@@ -36,12 +35,6 @@ var defaultConfig = Config{
 	Discord: DiscordConfig{
 		ClientID: 0,
 		Secret:   "",
-	},
-	Database: MongoConfig{
-		Host:     "127.0.0.1",
-		Port:     27017,
-		User:     "mongoadmin",
-		Password: "mongopassword",
 	},
 	Debug: false,
 }
