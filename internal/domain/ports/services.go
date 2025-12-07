@@ -20,3 +20,8 @@ type EventService interface {
 	SendEventToGame(event entities.RawEvent, gameID entities.GameID)
 	//SendEventToClanInAGame(event entities.Event, gameID entities.GameID, clan entities.Clan)
 }
+
+type ActionService interface {
+	CancelAction(action entities.RawAction, player entities.PlayerID)
+	//SendEventToGame(event entities.RawEvent, gameID entities.GameID)
+}
