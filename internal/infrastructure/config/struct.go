@@ -1,9 +1,9 @@
 package config
 
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
-	Discord DiscordConfig `yaml:"bot"`
-	Debug   bool          `yaml:"debug"`
+	Server ServerConfig `yaml:"server"`
+	OIDC   OIDCConfig   `yaml:"oidc"`
+	Debug  bool         `yaml:"debug"`
 }
 
 type ServerConfig struct {
@@ -13,9 +13,11 @@ type ServerConfig struct {
 	CookieStoreKey string `yaml:"cookie_store_key"`
 }
 
-type DiscordConfig struct {
-	ClientID int    `yaml:"client_id"`
-	Secret   string `yaml:"secret"`
+type OIDCConfig struct {
+	Issuer   string   `yaml:"issuer"`
+	ClientID string   `yaml:"client_id"`
+	Secret   string   `yaml:"secret"`
+	Scopes   []string `yaml:"scopes"`
 }
 
 type MongoConfig struct {
@@ -32,9 +34,11 @@ var defaultConfig = Config{
 		PublicUrl:      "https://",
 		CookieStoreKey: "",
 	},
-	Discord: DiscordConfig{
-		ClientID: 0,
-		Secret:   "",
+	OIDC: OIDCConfig{
+		Issuer:   "https://example.com/",
+		ClientID: "your-client-id",
+		Secret:   "your-client-secret",
+		Scopes:   []string{"openid", "profile", "email"},
 	},
 	Debug: false,
 }
