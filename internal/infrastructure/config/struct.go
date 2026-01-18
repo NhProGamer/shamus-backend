@@ -1,5 +1,7 @@
 package config
 
+import "net/url"
+
 type Config struct {
 	Server ServerConfig `yaml:"server"`
 	OIDC   OIDCConfig   `yaml:"oidc"`
@@ -20,6 +22,22 @@ type OIDCConfig struct {
 	Scopes   []string `yaml:"scopes"`
 }
 
+func (oidcConfig OIDCConfig) GetIssuerURL() url.URL {
+	issuerURL, err := url.Parse(oidcConfig.Issuer)
+	if err != nil {
+		panic("Invalid OIDC issuer URL in configuration: " + err.Error())
+	}
+	return *issuerURL
+}
+
+func (serverConfig ServerConfig) GetPublicURL() url.URL {
+	issuerURL, err := url.Parse(serverConfig.PublicUrl)
+	if err != nil {
+		panic("Invalid OIDC issuer URL in configuration: " + err.Error())
+	}
+	return *issuerURL
+}
+
 type MongoConfig struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -35,7 +53,7 @@ var defaultConfig = Config{
 		CookieStoreKey: "",
 	},
 	OIDC: OIDCConfig{
-		Issuer:   "https://example.com/",
+		Issuer:   "https://your-issuer.com/",
 		ClientID: "your-client-id",
 		Secret:   "your-client-secret",
 		Scopes:   []string{"openid", "profile", "email"},
