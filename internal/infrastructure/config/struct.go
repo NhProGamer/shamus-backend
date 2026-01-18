@@ -5,6 +5,7 @@ import "net/url"
 type Config struct {
 	Server ServerConfig `yaml:"server"`
 	OIDC   OIDCConfig   `yaml:"oidc"`
+	Redis  RedisConfig  `yaml:"redis"`
 	Debug  bool         `yaml:"debug"`
 }
 
@@ -20,6 +21,13 @@ type OIDCConfig struct {
 	ClientID string   `yaml:"client_id"`
 	Secret   string   `yaml:"secret"`
 	Scopes   []string `yaml:"scopes"`
+}
+
+type RedisConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
 }
 
 func (oidcConfig OIDCConfig) GetIssuerURL() url.URL {
@@ -51,6 +59,12 @@ var defaultConfig = Config{
 		Port:           8080,
 		PublicUrl:      "https://",
 		CookieStoreKey: "",
+	},
+	Redis: RedisConfig{
+		Host:     "",
+		Port:     6379,
+		Password: "",
+		DB:       0,
 	},
 	OIDC: OIDCConfig{
 		Issuer:   "https://your-issuer.com/",
