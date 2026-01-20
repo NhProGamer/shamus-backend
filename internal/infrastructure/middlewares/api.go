@@ -1,68 +1,52 @@
 package middlewares
 
 import (
-	"log"
 	"net/http"
 	"shamus-backend/internal/infrastructure/controllers"
 	"strings"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/oauth2" // Nécessaire pour wrapper le token
 )
-
-type UserClaims struct {
-	Sub string `json:"sub"`
-}
 
 func OIDCHandler(ctx *controllers.AppContext) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		oidcConfig := &oidc.Config{
-			ClientID: ctx.Config.OIDC.ClientID,
-		}
-		verifier := ctx.OIDCProvider.Verifier(oidcConfig)
-		// 1. Récupération du contenu brut (Header ou Fallback Query Param)
+		// 1. Récupération du token (Header ou Query)
 		authContent := c.GetHeader("Authorization")
 		if authContent == "" {
 			authContent = c.Query("access_token")
 		}
 
-		// 2. Vérification si vide après le fallback
 		if authContent == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header ou paramètre access_token manquant"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token manquant"})
 			return
 		}
 
-		// 3. Nettoyage pour obtenir uniquement le token (sans "Bearer ")
-		// La variable finale s'appelle 'rawToken'
+		// 2. Nettoyage (Bearer)
 		rawToken := strings.TrimPrefix(authContent, "Bearer ")
 		rawToken = strings.TrimSpace(rawToken)
 
 		if rawToken == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Format de token invalide"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token vide"})
 			return
 		}
 
-		// À partir d'ici, vous avez 'rawToken' (string)
+		userInfo, err := ctx.OIDCProvider.UserInfo(c.Request.Context(), oauth2.StaticTokenSource(&oauth2.Token{
+			AccessToken: rawToken,
+		}))
 
-		// Vérification du token via OIDC
-		// Cette étape vérifie la signature, l'expiration et l'émetteur
-		idToken, err := verifier.Verify(c.Request.Context(), rawToken)
 		if err != nil {
-			log.Println(rawToken)
-			log.Println(err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token invalide ou expiré"})
 			return
 		}
 
-		// Extraction des claims (infos utilisateur)
-		var claims UserClaims
-		if err := idToken.Claims(&claims); err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Impossible de lire les claims"})
-			return
-		}
+		userID := userInfo.Subject
 
-		// Injecter les infos dans le contexte Gin pour les handlers suivants
-		c.Set("userID", claims.Sub)
+		// Injecter dans le contexte Gin
+		c.Set("userID", userID)
+		c.Set("userInfo", userInfo) // Utile si vous voulez d'autres infos plus loin
+
 		c.Next()
 	}
+
 }
