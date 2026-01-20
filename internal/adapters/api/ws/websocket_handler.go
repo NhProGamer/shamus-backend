@@ -2,9 +2,10 @@ package ws
 
 import (
 	"encoding/json"
-	"log"
+	"errors"
 	"net/http"
 	"shamus-backend/internal/adapters/app_adapters"
+	"shamus-backend/internal/domain/entities/events"
 	"sync"
 
 	"shamus-backend/internal/domain/entities"
@@ -106,7 +107,29 @@ func (h *WebSocketHandler) setupEvents() {
 
 	// 3. Messages (Gameplay)
 	h.melody.HandleMessage(func(s *melody.Session, msg []byte) {
-		log.Println(msg)
+		var event entities.RawEvent
+		err := json.Unmarshal(msg, &event) // msg est []byte du WebSocket
+		if err != nil {
+			s.Write([]byte("Invalid JSON"))
+			return
+		}
+		switch event.Channel {
+		case entities.EventChannelGameEvent:
+			switch event.Type {
+			case events.EventTypeChatMessage:
+				var message events.ChatMessageEvent
+				if err := json.Unmarshal(event.Data, &message); err != nil {
+					panic(err)
+				}
+				gameIDstr, exist := s.Get("game_id")
+				if !exist || gameIDstr == "" {
+					s.CloseWithMsg([]byte("missing game_id"))
+					return
+				}
+				h.broadcastToRoom(entities.GameID(gameIDstr.(string)), msg)
+
+			}
+		}
 	})
 }
 
@@ -133,7 +156,7 @@ func (h *WebSocketHandler) leaveLocalRoom(gid entities.GameID, s *melody.Session
 }
 
 func (h *WebSocketHandler) broadcastGameState(gid entities.GameID, game *entities.Game) {
-	h.lock.RLock() // Read Lock suffisant
+	h.lock.RLock() // Read lock suffisant
 	defer h.lock.RUnlock()
 
 	sessions, ok := h.rooms[gid]
@@ -142,12 +165,32 @@ func (h *WebSocketHandler) broadcastGameState(gid entities.GameID, game *entitie
 	}
 
 	// Préparer le payload JSON une seule fois
-	payload, _ := json.Marshal(gin.H{
-		"type": "GAME_UPDATE",
-		"data": game,
-	})
+	payload, _ := json.Marshal(events.NewGameDataEvent(events.GameDataEventData{
+		ID:     game.ID,
+		Status: game.Status,
+		Phase:  game.Phase,
+		Day:    game.Day,
+		//Players: game.Players,
+		Host:     game.HostID,
+		Settings: game.Settings,
+	}))
 
 	for _, s := range sessions {
 		s.Write(payload)
 	}
+}
+
+func (h *WebSocketHandler) broadcastToRoom(gameID entities.GameID, msg []byte) error {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	sessions, ok := h.rooms[gameID]
+	if !ok || len(sessions) == 0 {
+		return errors.New("empty room")
+	}
+
+	for _, sess := range sessions {
+		_ = sess.Write(msg)
+	}
+	return nil
 }
