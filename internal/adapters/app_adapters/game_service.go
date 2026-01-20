@@ -18,7 +18,6 @@ func NewGameService(repo ports.GameRepository) *GameService {
 
 // CreateNewGame : Logique de création pure
 func (s *GameService) CreateNewGame(hostID entities.PlayerID) (*entities.Game, error) {
-	// Génération ID (4 chars)
 	gameID := entities.GameID(uuid.New().String())
 
 	newGame := &entities.Game{
@@ -29,7 +28,12 @@ func (s *GameService) CreateNewGame(hostID entities.PlayerID) (*entities.Game, e
 		Players: []entities.PlayerID{},
 		HostID:  hostID,
 		Settings: entities.GameSettings{
-			Roles: make(map[entities.RoleType]int),
+			Roles: map[entities.RoleType]int{
+				entities.RoleVillager: 4,
+				entities.RoleWerewolf: 2,
+				entities.RoleSeer:     1,
+				entities.RoleWitch:    1,
+			},
 		},
 	}
 

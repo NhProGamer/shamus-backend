@@ -33,7 +33,7 @@ func GetClan(role RoleType) Clan {
 	case RoleWerewolf:
 		return ClanWerewolf
 	default:
-		return ClanRogue // rôle inconnu → par défaut rogue
+		return ClanRogue
 	}
 }
 

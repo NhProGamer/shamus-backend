@@ -24,7 +24,7 @@ type GameDataEventData struct {
 
 func NewGameDataEvent(data GameDataEventData) entities.Event[GameDataEventData] {
 	return entities.Event[GameDataEventData]{
-		Channel: entities.EventChannelConnexion,
+		Channel: entities.EventChannelGameEvent,
 		Type:    EventTypeGameData,
 		Data:    data,
 	}
