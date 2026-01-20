@@ -44,7 +44,7 @@ func OIDCHandler(ctx *controllers.AppContext) gin.HandlerFunc {
 
 		// Injecter dans le contexte Gin
 		c.Set("userID", userID)
-		c.Set("userInfo", userInfo) // Utile si vous voulez d'autres infos plus loin
+		c.Set("userInfo", *userInfo) // Utile si vous voulez d'autres infos plus loin
 
 		c.Next()
 	}

@@ -10,6 +10,7 @@ import (
 
 	"shamus-backend/internal/domain/entities"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"github.com/olahol/melody"
 )
@@ -47,9 +48,15 @@ func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing user ID"})
 		return
 	}
+	userInfoRaw, exist := c.Get("userInfo")
+	if !exist || userInfoRaw == nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing user info"})
+		return
+	}
 	keys := map[string]interface{}{
-		"user_id": userIDstr,
-		"game_id": gameIDStr,
+		"user_id":   userIDstr,
+		"game_id":   gameIDStr,
+		"user_info": userInfoRaw,
 	}
 	err := h.melody.HandleRequestWithKeys(c.Writer, c.Request, keys)
 	if err != nil {
@@ -86,10 +93,6 @@ func (h *WebSocketHandler) setupEvents() {
 			return
 		}
 
-		// Stockage info session
-		s.Set("gameId", gameID)
-		s.Set("playerId", playerID)
-
 		// Ajout à la Room Locale (Mémoire)
 		h.joinLocalRoom(gameID, s)
 
@@ -107,6 +110,12 @@ func (h *WebSocketHandler) setupEvents() {
 
 	// 3. Messages (Gameplay)
 	h.melody.HandleMessage(func(s *melody.Session, msg []byte) {
+		userInfoRaw, exist := s.Get("user_info")
+		if !exist || userInfoRaw == nil {
+			s.CloseWithMsg([]byte("missing user_info"))
+			return
+		}
+		userInfo := userInfoRaw.(oidc.UserInfo)
 		var event entities.RawEvent
 		err := json.Unmarshal(msg, &event) // msg est []byte du WebSocket
 		if err != nil {
@@ -126,7 +135,18 @@ func (h *WebSocketHandler) setupEvents() {
 					s.CloseWithMsg([]byte("missing game_id"))
 					return
 				}
-				h.broadcastToRoom(entities.GameID(gameIDstr.(string)), msg)
+				var claims struct {
+					Username string `json:"preferred_username"`
+				}
+				userInfo.Claims(&claims)
+				nickname := claims.Username
+				reforgedEvent := events.NewChatMessageEvent(message.PlayerID, nickname, message.Message, message.Channel)
+				reforgedMsg, err := json.Marshal(reforgedEvent)
+				if err != nil {
+					s.Write([]byte("Error processing message"))
+					return
+				}
+				h.broadcastToRoom(entities.GameID(gameIDstr.(string)), reforgedMsg)
 
 			}
 		}
