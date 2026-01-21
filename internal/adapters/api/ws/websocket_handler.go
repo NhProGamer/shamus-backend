@@ -131,7 +131,7 @@ func (h *WebSocketHandler) setupEvents() {
 		case entities.EventChannelGameEvent:
 			switch event.Type {
 			case events.EventTypeChatMessage:
-				var message events.ChatMessageEvent
+				var message events.ChatMessageEventData
 				if err := json.Unmarshal(event.Data, &message); err != nil {
 					log.Printf("Failed to unmarshal chat message: %v", err)
 					s.Write([]byte("Invalid message format"))
