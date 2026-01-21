@@ -2,21 +2,21 @@ package http
 
 import (
 	"net/http"
-	"shamus-backend/internal/adapters/app_adapters"
 	"shamus-backend/internal/domain/entities"
+	"shamus-backend/internal/domain/ports"
 
 	"github.com/gin-gonic/gin"
 )
 
 type GameHandler struct {
-	service *app_adapters.GameService
+	gameService ports.GameService
 }
 
-func NewGameHandler(s *app_adapters.GameService) *GameHandler {
-	return &GameHandler{service: s}
+func NewGameHandler(gameService ports.GameService) *GameHandler {
+	return &GameHandler{gameService: gameService}
 }
 
-// CreateGame : POST /games
+// CreateGame handles POST /games
 func (h *GameHandler) CreateGame(c *gin.Context) {
 	var req struct {
 		HostID string `json:"hostId" binding:"required"`
@@ -27,7 +27,7 @@ func (h *GameHandler) CreateGame(c *gin.Context) {
 		return
 	}
 
-	game, err := h.service.CreateNewGame(entities.PlayerID(req.HostID))
+	game, err := h.gameService.CreateNewGame(entities.PlayerID(req.HostID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create game"})
 		return
