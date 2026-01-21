@@ -1,4 +1,4 @@
-package infra_adapters
+package infra
 
 import (
 	"context"

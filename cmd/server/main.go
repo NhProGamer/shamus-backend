@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	httphandler "shamus-backend/internal/adapters/api/http"
 	"shamus-backend/internal/adapters/api/ws"
-	"shamus-backend/internal/adapters/app_adapters"
-	"shamus-backend/internal/adapters/infra_adapters"
+	"shamus-backend/internal/adapters/app"
+	"shamus-backend/internal/adapters/infra"
 	"shamus-backend/internal/infrastructure/config"
 	"shamus-backend/internal/infrastructure/controllers"
 	"shamus-backend/internal/infrastructure/routes"
@@ -63,8 +63,8 @@ func main() {
 	log.Println("Connected to Redis")
 
 	// Wire up dependencies
-	gameRepo := infra_adapters.NewRedisGameRepo(rdb)
-	gameService := app_adapters.NewGameService(gameRepo)
+	gameRepo := infra.NewRedisGameRepo(rdb)
+	gameService := app.NewGameService(gameRepo)
 	httpHandler := httphandler.NewGameHandler(gameService)
 	wsHandler := ws.NewWebSocketHandler(m, gameService)
 

@@ -1,4 +1,4 @@
-package app_adapters
+package app
 
 import (
 	"errors"
