@@ -193,6 +193,20 @@ func (h *WebSocketHandler) setupEvents() {
 			return
 		}
 
+		// Extract common session data
+		gameIDStr, exist := s.Get("gameId")
+		if !exist || gameIDStr == "" {
+			s.CloseWithMsg([]byte("missing gameId"))
+			return
+		}
+		userIDStr, exist := s.Get("userId")
+		if !exist || userIDStr == "" {
+			s.CloseWithMsg([]byte("missing userId"))
+			return
+		}
+		gameID := entities.GameID(gameIDStr.(string))
+		playerID := entities.PlayerID(userIDStr.(string))
+
 		switch event.Channel {
 		case entities.EventChannelGameEvent:
 			switch event.Type {
@@ -201,11 +215,6 @@ func (h *WebSocketHandler) setupEvents() {
 				if err := json.Unmarshal(event.Data, &message); err != nil {
 					log.Printf("Failed to unmarshal chat message: %v", err)
 					s.Write([]byte("Invalid message format"))
-					return
-				}
-				gameIDStr, exist := s.Get("gameId")
-				if !exist || gameIDStr == "" {
-					s.CloseWithMsg([]byte("missing gameId"))
 					return
 				}
 				var claims struct {
@@ -219,7 +228,39 @@ func (h *WebSocketHandler) setupEvents() {
 					s.Write([]byte("Error processing message"))
 					return
 				}
-				h.broadcastToRoom(entities.GameID(gameIDStr.(string)), reforgedMsg)
+				h.broadcastToRoom(gameID, reforgedMsg)
+			}
+
+		case entities.EventChannelSettings:
+			switch event.Type {
+			case events.EventTypeGameSettings:
+				var settingsData events.GameSettingsEventData
+				if err := json.Unmarshal(event.Data, &settingsData); err != nil {
+					log.Printf("Failed to unmarshal settings: %v", err)
+					s.Write([]byte("Invalid settings format"))
+					return
+				}
+
+				// Build GameSettings from event data
+				newSettings := entities.GameSettings{
+					Roles: settingsData.RolesType,
+				}
+
+				// Call service to update settings (validates host + game state + roles)
+				updatedGame, err := h.gameService.UpdateSettings(gameID, playerID, newSettings)
+				if err != nil {
+					s.Write([]byte(err.Error()))
+					return
+				}
+
+				// Broadcast new settings to all players in the game
+				settingsEvent := events.NewGameSettingsEvent(events.GameSettingsEventData{
+					RolesType: updatedGame.Settings.Roles,
+				})
+				payload, _ := json.Marshal(settingsEvent)
+				h.broadcastToRoom(gameID, payload)
+
+				log.Printf("Host %s updated settings for game %s: %v", playerID, gameID, updatedGame.Settings.Roles)
 			}
 		}
 	})
