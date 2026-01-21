@@ -17,8 +17,9 @@ import (
 
 // WebSocketHandler manages WebSocket connections for games
 type WebSocketHandler struct {
-	melody      *melody.Melody
-	gameService ports.GameService
+	melody        *melody.Melody
+	gameService   ports.GameService
+	playerService ports.PlayerService
 
 	// rooms maps GameID to list of sessions for targeted broadcast
 	rooms map[entities.GameID][]*melody.Session
@@ -35,8 +36,21 @@ func NewWebSocketHandler(m *melody.Melody, gameService ports.GameService) *WebSo
 		playerSessions: make(map[entities.PlayerID]*melody.Session),
 	}
 
-	handler.setupEvents()
 	return handler
+}
+
+// SetPlayerService sets the player service (used to break circular dependency)
+func (h *WebSocketHandler) SetPlayerService(ps ports.PlayerService) {
+	h.playerService = ps
+	h.setupEvents()
+}
+
+// IsPlayerConnected checks if a player has an active WebSocket session
+func (h *WebSocketHandler) IsPlayerConnected(playerID entities.PlayerID) bool {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+	_, exists := h.playerSessions[playerID]
+	return exists
 }
 
 // HandleWS handles GET /ws/:gameID requests
@@ -80,6 +94,12 @@ func (h *WebSocketHandler) setupEvents() {
 			s.CloseWithMsg([]byte("missing userId"))
 			return
 		}
+		userInfoRaw, exist := s.Get("userInfo")
+		if !exist || userInfoRaw == nil {
+			s.CloseWithMsg([]byte("missing userInfo"))
+			return
+		}
+
 		gameID := entities.GameID(gameIDStr.(string))
 		playerID := entities.PlayerID(userIDStr.(string))
 
@@ -88,8 +108,22 @@ func (h *WebSocketHandler) setupEvents() {
 			return
 		}
 
-		// Call service for business logic (verify existence + add to DB)
-		updatedGame, err := h.gameService.JoinGame(gameID, playerID)
+		// Extract username from OIDC token
+		userInfo := userInfoRaw.(oidc.UserInfo)
+		var claims struct {
+			Username string `json:"preferred_username"`
+		}
+		if err := userInfo.Claims(&claims); err != nil {
+			s.CloseWithMsg([]byte("invalid user info"))
+			return
+		}
+		username := claims.Username
+		if username == "" {
+			username = string(playerID) // Fallback to playerID if no username
+		}
+
+		// Call PlayerService for business logic
+		player, isReconnection, err := h.playerService.HandleConnect(gameID, playerID, username)
 		if err != nil {
 			s.CloseWithMsg([]byte(err.Error()))
 			return
@@ -98,19 +132,51 @@ func (h *WebSocketHandler) setupEvents() {
 		// Add to local room (in-memory)
 		h.joinLocalRoom(gameID, playerID, s)
 
-		// Broadcast to all players in room: new player + updated state
-		h.broadcastGameState(gameID, updatedGame)
+		// Broadcast connection/reconnection event
+		var connEvent interface{}
+		if isReconnection {
+			connEvent = events.NewReconnectionEvent(playerID)
+		} else {
+			connEvent = events.NewConnectionEvent(playerID)
+		}
+		connPayload, _ := json.Marshal(connEvent)
+		h.broadcastToRoom(gameID, connPayload)
+
+		// Broadcast updated game state
+		game, err := h.gameService.GetGame(gameID)
+		if err == nil {
+			h.broadcastGameState(gameID, game)
+		}
+
+		log.Printf("Player %s (%s) joined game %s (reconnection: %v)", player.Username, playerID, gameID, isReconnection)
 	})
 
 	// Handle disconnection
 	h.melody.HandleDisconnect(func(s *melody.Session) {
 		gameIDVal, gameExists := s.Get("gameId")
 		userIDVal, userExists := s.Get("userId")
-		if gameExists && userExists {
-			gameID := entities.GameID(gameIDVal.(string))
-			playerID := entities.PlayerID(userIDVal.(string))
-			h.leaveLocalRoom(gameID, playerID, s)
+
+		if !gameExists || !userExists {
+			return
 		}
+
+		gameID := entities.GameID(gameIDVal.(string))
+		playerID := entities.PlayerID(userIDVal.(string))
+
+		// Remove from local room first
+		h.leaveLocalRoom(gameID, playerID, s)
+
+		// Call PlayerService for business logic
+		if err := h.playerService.HandleDisconnect(gameID, playerID); err != nil {
+			log.Printf("Error handling disconnect for player %s: %v", playerID, err)
+		}
+
+		// Broadcast disconnection event
+		disconnEvent := events.NewDisconnectionEvent(playerID)
+		disconnPayload, _ := json.Marshal(disconnEvent)
+		h.broadcastToRoom(gameID, disconnPayload)
+
+		log.Printf("Player %s disconnected from game %s", playerID, gameID)
 	})
 
 	// Handle messages (Gameplay)
