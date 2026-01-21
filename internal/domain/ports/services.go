@@ -66,3 +66,22 @@ type VisibilityService interface {
 		gamePhase entities.GamePhase,
 	) []events.PlayersDetailsData
 }
+
+// ChatService handles chat message permissions and routing
+type ChatService interface {
+	// CanSendToChannel checks if a player can send messages to a specific channel
+	// based on game phase, player role, and alive status
+	CanSendToChannel(
+		sender *entities.Player,
+		channel events.ChatChannel,
+		gamePhase entities.GamePhase,
+	) bool
+
+	// GetChannelRecipients returns the list of players who can receive messages
+	// on a specific channel based on game phase and their roles
+	GetChannelRecipients(
+		channel events.ChatChannel,
+		allPlayers []*entities.Player,
+		gamePhase entities.GamePhase,
+	) []*entities.Player
+}
