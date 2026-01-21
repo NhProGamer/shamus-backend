@@ -21,17 +21,16 @@ func NewRedisGameRepo(rdb *redis.Client) ports.GameRepository {
 	}
 }
 
-// Sauvegarder (Create ou Update)
+// SaveGame persists a game to Redis with 24h TTL
 func (gm *RedisGameRepo) SaveGame(game *entities.Game) error {
 	data, err := json.Marshal(game)
 	if err != nil {
 		return err
 	}
-	// Expire après 24h d'inactivité
 	return gm.rdb.Set(context.Background(), "game:"+string(game.ID), data, 24*time.Hour).Err()
 }
 
-// Récupérer
+// GetGame retrieves a game from Redis by ID
 func (gm *RedisGameRepo) GetGame(id entities.GameID) (*entities.Game, error) {
 	val, err := gm.rdb.Get(context.Background(), "game:"+string(id)).Result()
 	if err == redis.Nil {
@@ -46,4 +45,9 @@ func (gm *RedisGameRepo) GetGame(id entities.GameID) (*entities.Game, error) {
 		return nil, err
 	}
 	return &game, nil
+}
+
+// DeleteGame removes a game from Redis
+func (gm *RedisGameRepo) DeleteGame(id entities.GameID) error {
+	return gm.rdb.Del(context.Background(), "game:"+string(id)).Err()
 }
