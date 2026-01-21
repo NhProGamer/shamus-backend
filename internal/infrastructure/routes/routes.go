@@ -9,16 +9,6 @@ import (
 )
 
 func InitRoutes(r *gin.Engine, ctx *controllers.AppContext) {
-
-	/*initParams := gin_oidc.InitParams{
-		Router:       r,
-		ClientId:     ctx.Config.OIDC.ClientID,
-		ClientSecret: ctx.Config.OIDC.Secret,
-		Issuer:       ctx.Config.OIDC.GetIssuerURL(),
-		ClientUrl:    ctx.Config.Server.GetPublicURL(),
-		Scopes:       ctx.Config.OIDC.Scopes,
-	}*/
-
 	// Protected routes (require authentication)
 	protected := r.Group("/app")
 	protected.Use(middlewares.OIDCHandler(ctx))
@@ -32,9 +22,5 @@ func InitRoutes(r *gin.Engine, ctx *controllers.AppContext) {
 		c.JSON(http.StatusOK, gin.H{"message": "You are authenticated! "})
 	})
 
-	//api.GET("game", ctx.GetGameHandler)
 	api.POST("game", ctx.PostGameHandler)
-
-	//api.PATCH("gameSettings", ctx.PatchGameSettingsHandler)
-
 }
