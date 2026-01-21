@@ -7,10 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (ctx *AppContext) GetGameHandler(c *gin.Context) {
-	c.Abort()
-}
-
 func (ctx *AppContext) PostGameHandler(c *gin.Context) {
 	userIDstr, exist := c.Get("userID")
 	if !exist || userIDstr == "" {
@@ -23,8 +19,4 @@ func (ctx *AppContext) PostGameHandler(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"gameID": game.ID})
-}
-
-func (ctx *AppContext) PatchGameSettingsHandler(c *gin.Context) {
-
 }

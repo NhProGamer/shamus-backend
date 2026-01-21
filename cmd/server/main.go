@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	httphandler "shamus-backend/internal/adapters/api/http"
 	"shamus-backend/internal/adapters/api/ws"
 	"shamus-backend/internal/adapters/app"
 	"shamus-backend/internal/adapters/infra"
@@ -79,14 +78,11 @@ func main() {
 	// Inject PlayerService into WebSocketHandler (completes the wiring)
 	wsHandler.SetPlayerService(playerService)
 
-	httpHandler := httphandler.NewGameHandler(gameService)
-
 	// Initialize routes
 	routes.InitRoutes(r, &controllers.AppContext{
 		Config:           &cfg,
 		GameService:      gameService,
 		WebsocketHandler: wsHandler,
-		HttpHandler:      httpHandler,
 		OIDCProvider:     provider,
 	})
 
