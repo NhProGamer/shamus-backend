@@ -54,7 +54,12 @@ func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.
 		return nil, false, apperrors.ErrGameNotFound
 	}
 
-	// 3. Check if player already exists
+	// 3. Check if game has ended - no one can join
+	if game.Status == entities.GameStatusEnded {
+		return nil, false, apperrors.ErrGameEnded
+	}
+
+	// 4. Check if player already exists
 	existingPlayer, err := s.playerRepo.GetPlayer(playerID)
 
 	if err != nil {
@@ -120,6 +125,15 @@ func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.
 	}
 
 	// Player is reconnecting to the same game
+	// Only allow reconnection if game is active and player was disconnected
+	if game.Status == entities.GameStatusActive {
+		if existingPlayer.ConnectionState != entities.ConnectionStateDisconnected {
+			// Player is marked as connected but trying to connect again
+			// This shouldn't happen if IsPlayerConnected works correctly
+			return nil, false, apperrors.ErrPlayerAlreadyConnected
+		}
+	}
+
 	s.cancelReconnTimer(playerID)
 	existingPlayer.Connect()
 	if err := s.playerRepo.SavePlayer(existingPlayer); err != nil {
