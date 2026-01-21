@@ -68,9 +68,10 @@ func main() {
 
 	gameService := app.NewGameService(gameRepo)
 	visibilityService := app.NewVisibilityService()
+	chatService := app.NewChatService()
 
 	// Create WebSocket handler first (without PlayerService to break circular dependency)
-	wsHandler := ws.NewWebSocketHandler(m, gameService, visibilityService)
+	wsHandler := ws.NewWebSocketHandler(m, gameService, visibilityService, chatService)
 
 	// Create PlayerService with WebSocketHandler as ConnectionChecker
 	playerService := app.NewPlayerService(playerRepo, gameRepo, wsHandler)

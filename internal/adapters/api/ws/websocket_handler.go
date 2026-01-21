@@ -21,6 +21,7 @@ type WebSocketHandler struct {
 	gameService       ports.GameService
 	playerService     ports.PlayerService
 	visibilityService ports.VisibilityService
+	chatService       ports.ChatService
 
 	// rooms maps GameID to list of sessions for targeted broadcast
 	rooms map[entities.GameID][]*melody.Session
@@ -29,11 +30,12 @@ type WebSocketHandler struct {
 	lock           sync.RWMutex
 }
 
-func NewWebSocketHandler(m *melody.Melody, gameService ports.GameService, visibilityService ports.VisibilityService) *WebSocketHandler {
+func NewWebSocketHandler(m *melody.Melody, gameService ports.GameService, visibilityService ports.VisibilityService, chatService ports.ChatService) *WebSocketHandler {
 	handler := &WebSocketHandler{
 		melody:            m,
 		gameService:       gameService,
 		visibilityService: visibilityService,
+		chatService:       chatService,
 		rooms:             make(map[entities.GameID][]*melody.Session),
 		playerSessions:    make(map[entities.PlayerID]*melody.Session),
 	}
@@ -219,18 +221,58 @@ func (h *WebSocketHandler) setupEvents() {
 					s.Write([]byte("Invalid message format"))
 					return
 				}
+
+				// Validate chat channel
+				if !events.IsValidChatChannel(string(message.Channel)) {
+					s.Write([]byte("Invalid chat channel"))
+					return
+				}
+
+				// Get game state for phase info
+				game, err := h.gameService.GetGame(gameID)
+				if err != nil {
+					s.Write([]byte("Game not found"))
+					return
+				}
+
+				// Get sender player info
+				sender, err := h.playerService.GetPlayer(playerID)
+				if err != nil {
+					s.Write([]byte("Player not found"))
+					return
+				}
+
+				// Check if sender can send to this channel
+				if !h.chatService.CanSendToChannel(sender, message.Channel, game.Phase) {
+					s.Write([]byte("You cannot send messages to this channel"))
+					return
+				}
+
+				// Get all players for recipient filtering
+				allPlayers, err := h.playerService.GetGamePlayers(gameID)
+				if err != nil {
+					s.Write([]byte("Failed to get players"))
+					return
+				}
+
+				// Get recipients for this channel
+				recipients := h.chatService.GetChannelRecipients(message.Channel, allPlayers, game.Phase)
+
+				// Build the chat message event
 				var claims struct {
 					Username string `json:"preferred_username"`
 				}
 				userInfo.Claims(&claims)
 				nickname := claims.Username
-				reforgedEvent := events.NewChatMessageEvent(message.PlayerID, nickname, message.Message, message.Channel)
+				reforgedEvent := events.NewChatMessageEvent(playerID, nickname, message.Message, message.Channel)
 				reforgedMsg, err := json.Marshal(reforgedEvent)
 				if err != nil {
 					s.Write([]byte("Error processing message"))
 					return
 				}
-				h.broadcastToRoom(gameID, reforgedMsg)
+
+				// Send to recipients only
+				h.sendToPlayers(recipients, reforgedMsg)
 			}
 
 		case entities.EventChannelSettings:
@@ -365,4 +407,16 @@ func (h *WebSocketHandler) SendToPlayer(playerID entities.PlayerID, payload []by
 // BroadcastToGame sends a message to all players in a game (public API for EventService)
 func (h *WebSocketHandler) BroadcastToGame(gameID entities.GameID, payload []byte) error {
 	return h.broadcastToRoom(gameID, payload)
+}
+
+// sendToPlayers sends a message to a specific list of players
+func (h *WebSocketHandler) sendToPlayers(players []*entities.Player, payload []byte) {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	for _, p := range players {
+		if sess, ok := h.playerSessions[p.ID]; ok {
+			sess.Write(payload)
+		}
+	}
 }
