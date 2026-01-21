@@ -12,6 +12,10 @@ type GameService interface {
 
 	// GetGame retrieves a game by ID
 	GetGame(gameID entities.GameID) (*entities.Game, error)
+
+	// UpdateSettings updates game settings (roles configuration)
+	// Only the host can update settings, and only when game is in waiting state
+	UpdateSettings(gameID entities.GameID, playerID entities.PlayerID, settings entities.GameSettings) (*entities.Game, error)
 }
 
 // PlayerService defines player management operations

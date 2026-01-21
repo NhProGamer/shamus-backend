@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"shamus-backend/internal/domain/entities"
+	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 
 	"github.com/google/uuid"
@@ -74,4 +75,55 @@ func (s *GameService) JoinGame(gameID entities.GameID, playerID entities.PlayerI
 // GetGame retrieves a game by ID
 func (s *GameService) GetGame(gameID entities.GameID) (*entities.Game, error) {
 	return s.repo.GetGame(gameID)
+}
+
+// UpdateSettings updates game settings (roles configuration)
+// Only the host can update settings, and only when game is in waiting state
+func (s *GameService) UpdateSettings(gameID entities.GameID, playerID entities.PlayerID, settings entities.GameSettings) (*entities.Game, error) {
+	game, err := s.repo.GetGame(gameID)
+	if err != nil {
+		return nil, apperrors.ErrGameNotFound
+	}
+
+	// Only host can update settings
+	if game.HostID != playerID {
+		return nil, apperrors.ErrNotHost
+	}
+
+	// Game must be in waiting state
+	if game.Status != entities.GameStatusWaiting {
+		return nil, apperrors.ErrGameNotWaiting
+	}
+
+	// Validate each role
+	totalRoles := 0
+	for roleType, count := range settings.Roles {
+		if !entities.IsValidRole(string(roleType)) {
+			return nil, apperrors.ErrInvalidRole
+		}
+		if count < 0 {
+			return nil, apperrors.ErrInvalidInput
+		}
+
+		// Check role-specific limits (e.g., max 1 seer, max 1 witch)
+		if limit, hasLimit := entities.RoleLimits[roleType]; hasLimit && count > limit {
+			return nil, apperrors.ErrRoleLimitExceeded
+		}
+
+		totalRoles += count
+	}
+
+	// Check total roles doesn't exceed max players
+	if totalRoles > entities.MaxPlayers {
+		return nil, apperrors.ErrTooManyRoles
+	}
+
+	// Update settings
+	game.Settings = settings
+
+	if err := s.repo.SaveGame(game); err != nil {
+		return nil, err
+	}
+
+	return game, nil
 }
