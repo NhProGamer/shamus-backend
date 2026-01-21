@@ -43,8 +43,8 @@ func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid game ID"})
 		return
 	}
-	userIDstr, exist := c.Get("userID")
-	if !exist || userIDstr == "" {
+	userIDStr, exist := c.Get("userID")
+	if !exist || userIDStr == "" {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing user ID"})
 		return
 	}
@@ -54,7 +54,7 @@ func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 		return
 	}
 	keys := map[string]interface{}{
-		"userId":   userIDstr,
+		"userId":   userIDStr,
 		"gameId":   gameIDStr,
 		"userInfo": userInfoRaw,
 	}
@@ -67,18 +67,18 @@ func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 func (h *WebSocketHandler) setupEvents() {
 	// Handle connection (Join Game)
 	h.melody.HandleConnect(func(s *melody.Session) {
-		gameIDstr, exist := s.Get("gameId")
-		if !exist || gameIDstr == "" {
+		gameIDStr, exist := s.Get("gameId")
+		if !exist || gameIDStr == "" {
 			s.CloseWithMsg([]byte("missing gameId"))
 			return
 		}
-		userIDstr, exist := s.Get("userId")
-		if !exist || userIDstr == "" {
+		userIDStr, exist := s.Get("userId")
+		if !exist || userIDStr == "" {
 			s.CloseWithMsg([]byte("missing userId"))
 			return
 		}
-		gameID := entities.GameID(gameIDstr.(string))
-		playerID := entities.PlayerID(userIDstr.(string))
+		gameID := entities.GameID(gameIDStr.(string))
+		playerID := entities.PlayerID(userIDStr.(string))
 
 		if gameID == "" || playerID == "" {
 			s.CloseWithMsg([]byte("missing parameters"))
@@ -131,8 +131,8 @@ func (h *WebSocketHandler) setupEvents() {
 					s.Write([]byte("Invalid message format"))
 					return
 				}
-				gameIDstr, exist := s.Get("gameId")
-				if !exist || gameIDstr == "" {
+				gameIDStr, exist := s.Get("gameId")
+				if !exist || gameIDStr == "" {
 					s.CloseWithMsg([]byte("missing gameId"))
 					return
 				}
@@ -147,7 +147,7 @@ func (h *WebSocketHandler) setupEvents() {
 					s.Write([]byte("Error processing message"))
 					return
 				}
-				h.broadcastToRoom(entities.GameID(gameIDstr.(string)), reforgedMsg)
+				h.broadcastToRoom(entities.GameID(gameIDStr.(string)), reforgedMsg)
 			}
 		}
 	})
