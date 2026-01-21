@@ -20,7 +20,8 @@ type VoteEventData struct {
 
 func NewVoteEvent(voteType VoteEventType, player *entities.PlayerID, target *entities.PlayerID) entities.Event[VoteEventData] {
 	return entities.Event[VoteEventData]{
-		Type: EventTypeVote,
+		Channel: entities.EventChannelGameEvent,
+		Type:    EventTypeVote,
 		Data: VoteEventData{
 			Type:   voteType,
 			Player: player,
