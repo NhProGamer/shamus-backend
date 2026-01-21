@@ -17,9 +17,10 @@ import (
 
 // WebSocketHandler manages WebSocket connections for games
 type WebSocketHandler struct {
-	melody        *melody.Melody
-	gameService   ports.GameService
-	playerService ports.PlayerService
+	melody            *melody.Melody
+	gameService       ports.GameService
+	playerService     ports.PlayerService
+	visibilityService ports.VisibilityService
 
 	// rooms maps GameID to list of sessions for targeted broadcast
 	rooms map[entities.GameID][]*melody.Session
@@ -28,12 +29,13 @@ type WebSocketHandler struct {
 	lock           sync.RWMutex
 }
 
-func NewWebSocketHandler(m *melody.Melody, gameService ports.GameService) *WebSocketHandler {
+func NewWebSocketHandler(m *melody.Melody, gameService ports.GameService, visibilityService ports.VisibilityService) *WebSocketHandler {
 	handler := &WebSocketHandler{
-		melody:         m,
-		gameService:    gameService,
-		rooms:          make(map[entities.GameID][]*melody.Session),
-		playerSessions: make(map[entities.PlayerID]*melody.Session),
+		melody:            m,
+		gameService:       gameService,
+		visibilityService: visibilityService,
+		rooms:             make(map[entities.GameID][]*melody.Session),
+		playerSessions:    make(map[entities.PlayerID]*melody.Session),
 	}
 
 	return handler
@@ -142,10 +144,10 @@ func (h *WebSocketHandler) setupEvents() {
 		connPayload, _ := json.Marshal(connEvent)
 		h.broadcastToRoom(gameID, connPayload)
 
-		// Broadcast updated game state
+		// Send personalized game state to each player
 		game, err := h.gameService.GetGame(gameID)
 		if err == nil {
-			h.broadcastGameState(gameID, game)
+			h.sendPersonalizedGameStateToAll(gameID, game)
 		}
 
 		log.Printf("Player %s (%s) joined game %s (reconnection: %v)", player.Username, playerID, gameID, isReconnection)
@@ -289,27 +291,46 @@ func (h *WebSocketHandler) leaveLocalRoom(gid entities.GameID, playerID entities
 	delete(h.playerSessions, playerID)
 }
 
-// broadcastGameState sends game state to all players in a room
-func (h *WebSocketHandler) broadcastGameState(gid entities.GameID, game *entities.Game) {
-	h.lock.RLock()
-	defer h.lock.RUnlock()
-
-	sessions, ok := h.rooms[gid]
-	if !ok {
+// sendPersonalizedGameStateToAll sends personalized game state to each player in a room
+// Each player receives a GameDataEventData with role visibility based on their perspective
+func (h *WebSocketHandler) sendPersonalizedGameStateToAll(gid entities.GameID, game *entities.Game) {
+	// Get all players with their full data (including roles)
+	players, err := h.playerService.GetGamePlayers(gid)
+	if err != nil {
+		log.Printf("Failed to get players for game %s: %v", gid, err)
 		return
 	}
 
-	payload, _ := json.Marshal(events.NewGameDataEvent(events.GameDataEventData{
-		ID:       game.ID,
-		Status:   game.Status,
-		Phase:    game.Phase,
-		Day:      game.Day,
-		Host:     game.HostID,
-		Settings: game.Settings,
-	}))
+	h.lock.RLock()
+	defer h.lock.RUnlock()
 
-	for _, s := range sessions {
-		s.Write(payload)
+	for _, player := range players {
+		sess, ok := h.playerSessions[player.ID]
+		if !ok {
+			continue // Player is disconnected
+		}
+
+		// Build personalized player details for this viewer
+		playersDetails := h.visibilityService.BuildPlayersDetailsForPlayer(
+			player, players, game.Phase,
+		)
+
+		event := events.NewGameDataEvent(events.GameDataEventData{
+			ID:       game.ID,
+			Status:   game.Status,
+			Phase:    game.Phase,
+			Day:      game.Day,
+			Host:     game.HostID,
+			Settings: game.Settings,
+			Players:  playersDetails,
+		})
+
+		payload, err := json.Marshal(event)
+		if err != nil {
+			log.Printf("Failed to marshal game state for player %s: %v", player.ID, err)
+			continue
+		}
+		sess.Write(payload)
 	}
 }
 

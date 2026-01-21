@@ -67,9 +67,10 @@ func main() {
 	playerRepo := infra.NewRedisPlayerRepo(rdb)
 
 	gameService := app.NewGameService(gameRepo)
+	visibilityService := app.NewVisibilityService()
 
 	// Create WebSocket handler first (without PlayerService to break circular dependency)
-	wsHandler := ws.NewWebSocketHandler(m, gameService)
+	wsHandler := ws.NewWebSocketHandler(m, gameService, visibilityService)
 
 	// Create PlayerService with WebSocketHandler as ConnectionChecker
 	playerService := app.NewPlayerService(playerRepo, gameRepo, wsHandler)
