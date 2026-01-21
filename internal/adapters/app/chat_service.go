@@ -97,7 +97,7 @@ func (s *ChatServiceImpl) GetChannelRecipients(
 
 // isDayPhase returns true if the phase is during daytime (Day or Vote)
 func (s *ChatServiceImpl) isDayPhase(phase entities.GamePhase) bool {
-	return phase == entities.PhaseDay || phase == entities.PhaseVote
+	return phase == entities.PhaseDay || phase == entities.PhaseVote || phase == entities.PhaseStart
 }
 
 // isWerewolf checks if a player belongs to the werewolf clan
