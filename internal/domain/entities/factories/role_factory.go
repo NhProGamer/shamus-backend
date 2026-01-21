@@ -58,7 +58,7 @@ func NewWitchRole() *roles.WitchRole {
 			entities.ClanVillager,
 		},
 		Abilities: []entities.Ability{
-			abilities.NewPoisonAbility(),
+			abilities.NewHealAbility(),
 			abilities.NewPoisonAbility(),
 		},
 	}
