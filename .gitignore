@@ -1,0 +1,26 @@
+# IDE
+.idea/
+
+# Config files with secrets
+config.yaml
+config.local.yaml
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+shamus-backend
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
