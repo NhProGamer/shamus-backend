@@ -19,7 +19,7 @@ func InitRoutes(r *gin.Engine, ctx *controllers.AppContext) {
 		Scopes:       ctx.Config.OIDC.Scopes,
 	}*/
 
-	// Si connecté avec discord
+	// Protected routes (require authentication)
 	protected := r.Group("/app")
 	protected.Use(middlewares.OIDCHandler(ctx))
 

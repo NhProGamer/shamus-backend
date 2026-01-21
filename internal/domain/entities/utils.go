@@ -5,7 +5,7 @@ func SumConsumptions(abilities []Ability) *uint64 {
 	for _, a := range abilities {
 		consumptions := a.GetConsumptions()
 		if consumptions == nil {
-			// Une capacité infinie => on retourne nil pour signifier "infini"
+			// Unlimited ability => return nil to signify "infinite"
 			return nil
 		}
 		total += uint64(*consumptions)

@@ -8,7 +8,7 @@ const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 func GenerateID(length int) (string, error) {
 	b := make([]byte, length)
-	_, err := rand.Read(b) // génère des octets aléatoires cryptographiquement sûrs
+	_, err := rand.Read(b) // generates cryptographically secure random bytes
 	if err != nil {
 		return "", err
 	}

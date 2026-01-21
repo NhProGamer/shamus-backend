@@ -37,7 +37,7 @@ func GetClan(role RoleType) Clan {
 	}
 }
 
-// GetClansFromRoles retourne la liste des clans correspondant à une liste de rôles.
+// GetClansFromRoles returns the list of clans corresponding to a list of roles.
 func GetClansFromRoles(roles []RoleType) []Clan {
 	clans := make([]Clan, 0, len(roles))
 	for _, role := range roles {
