@@ -6,6 +6,7 @@ const EventTypeGameData entities.EventType = "game_data"
 
 type PlayersDetailsData struct {
 	ID             entities.PlayerID        `json:"id"`
+	Username       string                   `json:"username"`
 	Alive          bool                     `json:"alive"`
 	Role           *entities.RoleType       `json:"role,omitempty"`
 	Target         *entities.PlayerID       `json:"target,omitempty"`
