@@ -1,140 +1,72 @@
 package entities
 
-import "sync"
-
 type PlayerID string
 type ConnectionState string
 
 const (
-	Connected    ConnectionState = "connected"
-	Disconnected ConnectionState = "disconnected"
-	Inactive     ConnectionState = "inactive"
+	ConnectionStateConnected    ConnectionState = "connected"
+	ConnectionStateDisconnected ConnectionState = "disconnected"
+	ConnectionStateInactive     ConnectionState = "inactive"
 )
 
 type Player struct {
-	id              PlayerID
-	username        string
-	role            *Role
-	isAlive         bool
-	votedFor        *PlayerID
-	connectionState ConnectionState
-	gameID          *GameID
+	ID              PlayerID        `json:"id"`
+	Username        string          `json:"username"`
+	Role            Role            `json:"-"`
+	IsAlive         bool            `json:"isAlive"`
+	VotedFor        *PlayerID       `json:"votedFor,omitempty"`
+	ConnectionState ConnectionState `json:"connectionState"`
+	GameID          *GameID         `json:"gameId,omitempty"`
 }
 
-type SafePlayer struct {
-	mu     sync.RWMutex
-	player *Player
-}
-
-func NewSafePlayer(id PlayerID, username string, gameID *GameID) *SafePlayer {
-	return &SafePlayer{
-		mu: sync.RWMutex{},
-		player: &Player{
-			id:              id,
-			username:        username,
-			role:            nil,
-			isAlive:         true,
-			votedFor:        nil,
-			connectionState: Connected,
-			gameID:          gameID,
-		},
+func NewPlayer(id PlayerID, username string, gameID *GameID) *Player {
+	return &Player{
+		ID:              id,
+		Username:        username,
+		Role:            nil,
+		IsAlive:         true,
+		VotedFor:        nil,
+		ConnectionState: ConnectionStateConnected,
+		GameID:          gameID,
 	}
 }
 
-// --- Getters ---
-func (sp *SafePlayer) ID() PlayerID {
-	sp.mu.RLock()
-	defer sp.mu.RUnlock()
-	return sp.player.id
+// AssignRole assigns a role to the player
+func (p *Player) AssignRole(r Role) {
+	p.Role = r
 }
 
-func (sp *SafePlayer) Username() string {
-	sp.mu.RLock()
-	defer sp.mu.RUnlock()
-	return sp.player.username
+// Kill marks the player as dead
+func (p *Player) Kill() {
+	p.IsAlive = false
 }
 
-func (sp *SafePlayer) Role() *Role {
-	sp.mu.RLock()
-	defer sp.mu.RUnlock()
-	return sp.player.role
+// Revive marks the player as alive
+func (p *Player) Revive() {
+	p.IsAlive = true
 }
 
-func (sp *SafePlayer) Alive() bool {
-	sp.mu.RLock()
-	defer sp.mu.RUnlock()
-	return sp.player.isAlive
+// Vote sets the player's vote target
+func (p *Player) Vote(target *PlayerID) {
+	p.VotedFor = target
 }
 
-func (sp *SafePlayer) VotedFor() *PlayerID {
-	sp.mu.RLock()
-	defer sp.mu.RUnlock()
-	return sp.player.votedFor
+// ClearVote removes the player's vote
+func (p *Player) ClearVote() {
+	p.VotedFor = nil
 }
 
-func (sp *SafePlayer) ConnectionState() ConnectionState {
-	sp.mu.RLock()
-	defer sp.mu.RUnlock()
-	return sp.player.connectionState
+// Connect sets the player's connection state to connected
+func (p *Player) Connect() {
+	p.ConnectionState = ConnectionStateConnected
 }
 
-func (sp *SafePlayer) GetGameID() *GameID {
-	sp.mu.RLock()
-	defer sp.mu.RUnlock()
-	return sp.player.gameID
+// Disconnect sets the player's connection state to disconnected
+func (p *Player) Disconnect() {
+	p.ConnectionState = ConnectionStateDisconnected
 }
 
-// --- Mutateurs ---
-func (sp *SafePlayer) AssignRole(r *Role) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.role = r
-}
-
-func (sp *SafePlayer) Kill() {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.isAlive = false
-}
-
-func (sp *SafePlayer) Revive() {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.isAlive = true
-}
-
-func (sp *SafePlayer) VoteFor(id *PlayerID) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.votedFor = id
-}
-
-func (sp *SafePlayer) ClearVote() {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.votedFor = nil
-}
-
-func (sp *SafePlayer) Connect() {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.connectionState = Connected
-}
-
-func (sp *SafePlayer) Disconnect() {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.connectionState = Disconnected
-}
-
-func (sp *SafePlayer) SetInactive() {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.connectionState = Inactive
-}
-
-func (sp *SafePlayer) SetGameID(id *GameID) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-	sp.player.gameID = id
+// SetInactive sets the player's connection state to inactive
+func (p *Player) SetInactive() {
+	p.ConnectionState = ConnectionStateInactive
 }

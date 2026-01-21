@@ -7,16 +7,16 @@ import (
 type WerewolfKillAbility struct{}
 
 func (k *WerewolfKillAbility) GetName() string {
-	return "Tuer"
+	return "Kill"
 }
 
 func (k *WerewolfKillAbility) GetDescription() string {
-	return "Élimine un joueur"
+	return "Eliminates a player"
 }
 
-func (k *WerewolfKillAbility) CanUse(game *entities.Game, player *entities.SafePlayer) bool {
-	// TODO: Ajouter les erreurs ici
-	return false
+func (k *WerewolfKillAbility) CanUse(game *entities.Game, player *entities.Player) bool {
+	// TODO: add validation logic
+	return true
 }
 
 func (k *WerewolfKillAbility) GetConsumptions() *uint8 {
@@ -27,7 +27,8 @@ func (k *WerewolfKillAbility) Consume() {
 	// No consumptions for this ability
 }
 
-func (k *WerewolfKillAbility) Execute(game *entities.Game, player *entities.SafePlayer, target *entities.PlayerID, data map[string]interface{}) error {
+func (k *WerewolfKillAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
+	// TODO: implement kill logic
 	return nil
 }
 
