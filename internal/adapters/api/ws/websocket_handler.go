@@ -213,3 +213,23 @@ func (h *WebSocketHandler) broadcastToRoom(gameID entities.GameID, msg []byte) e
 	}
 	return nil
 }
+
+// SendToPlayer sends a message to a specific player (public API for EventService)
+func (h *WebSocketHandler) SendToPlayer(playerID entities.PlayerID, payload []byte) error {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	for _, sessions := range h.rooms {
+		for _, sess := range sessions {
+			if pid, exists := sess.Get("userId"); exists && pid.(string) == string(playerID) {
+				return sess.Write(payload)
+			}
+		}
+	}
+	return errors.New("player not connected")
+}
+
+// BroadcastToGame sends a message to all players in a game (public API for EventService)
+func (h *WebSocketHandler) BroadcastToGame(gameID entities.GameID, payload []byte) error {
+	return h.broadcastToRoom(gameID, payload)
+}
