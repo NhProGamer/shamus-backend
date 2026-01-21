@@ -20,6 +20,7 @@ func (ctx *AppContext) PostGameHandler(c *gin.Context) {
 	game, err := ctx.GameService.CreateNewGame(entities.PlayerID(userIDstr.(string)))
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"gameID": game.ID})
 }
