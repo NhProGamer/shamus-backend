@@ -54,9 +54,9 @@ func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 		return
 	}
 	keys := map[string]interface{}{
-		"user_id":   userIDstr,
-		"game_id":   gameIDStr,
-		"user_info": userInfoRaw,
+		"userId":   userIDstr,
+		"gameId":   gameIDStr,
+		"userInfo": userInfoRaw,
 	}
 	err := h.melody.HandleRequestWithKeys(c.Writer, c.Request, keys)
 	if err != nil {
@@ -67,14 +67,14 @@ func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 func (h *WebSocketHandler) setupEvents() {
 	// Handle connection (Join Game)
 	h.melody.HandleConnect(func(s *melody.Session) {
-		gameIDstr, exist := s.Get("game_id")
+		gameIDstr, exist := s.Get("gameId")
 		if !exist || gameIDstr == "" {
-			s.CloseWithMsg([]byte("missing game_id"))
+			s.CloseWithMsg([]byte("missing gameId"))
 			return
 		}
-		userIDstr, exist := s.Get("user_id")
+		userIDstr, exist := s.Get("userId")
 		if !exist || userIDstr == "" {
-			s.CloseWithMsg([]byte("missing user_id"))
+			s.CloseWithMsg([]byte("missing userId"))
 			return
 		}
 		gameID := entities.GameID(gameIDstr.(string))
@@ -101,7 +101,7 @@ func (h *WebSocketHandler) setupEvents() {
 
 	// Handle disconnection
 	h.melody.HandleDisconnect(func(s *melody.Session) {
-		val, exists := s.Get("game_id")
+		val, exists := s.Get("gameId")
 		if exists {
 			h.leaveLocalRoom(entities.GameID(val.(string)), s)
 		}
@@ -109,9 +109,9 @@ func (h *WebSocketHandler) setupEvents() {
 
 	// Handle messages (Gameplay)
 	h.melody.HandleMessage(func(s *melody.Session, msg []byte) {
-		userInfoRaw, exist := s.Get("user_info")
+		userInfoRaw, exist := s.Get("userInfo")
 		if !exist || userInfoRaw == nil {
-			s.CloseWithMsg([]byte("missing user_info"))
+			s.CloseWithMsg([]byte("missing userInfo"))
 			return
 		}
 		userInfo := userInfoRaw.(oidc.UserInfo)
@@ -131,9 +131,9 @@ func (h *WebSocketHandler) setupEvents() {
 					s.Write([]byte("Invalid message format"))
 					return
 				}
-				gameIDstr, exist := s.Get("game_id")
+				gameIDstr, exist := s.Get("gameId")
 				if !exist || gameIDstr == "" {
-					s.CloseWithMsg([]byte("missing game_id"))
+					s.CloseWithMsg([]byte("missing gameId"))
 					return
 				}
 				var claims struct {
