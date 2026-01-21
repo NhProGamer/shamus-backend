@@ -64,3 +64,15 @@ var (
 	ErrInvalidInput = New("INVALID_INPUT", "invalid input provided")
 	ErrMissingField = New("MISSING_FIELD", "required field is missing")
 )
+
+// Settings errors
+var (
+	ErrNotHost            = New("NOT_HOST", "only the host can modify game settings")
+	ErrInvalidRole        = New("INVALID_ROLE", "invalid role type")
+	ErrTooManyRoles       = New("TOO_MANY_ROLES", "too many roles configured")
+	ErrRoleLimitExceeded  = New("ROLE_LIMIT_EXCEEDED", "role limit exceeded for this role type")
+	ErrNotEnoughPlayers   = New("NOT_ENOUGH_PLAYERS", "not enough players to start")
+	ErrTooManyPlayers     = New("TOO_MANY_PLAYERS", "too many players")
+	ErrRoleCountMismatch  = New("ROLE_COUNT_MISMATCH", "number of roles must equal number of players")
+	ErrInvalidComposition = New("INVALID_COMPOSITION", "need at least one villager and one werewolf/rogue")
+)
