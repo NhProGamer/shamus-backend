@@ -2,7 +2,7 @@ package events
 
 import "shamus-backend/internal/domain/entities"
 
-const EventTypeRoleAttribution entities.EventType = "win"
+const EventTypeRoleAttribution entities.EventType = "role_reveal"
 
 type RoleRevealEventData struct {
 	Role entities.RoleType `json:"role"`
