@@ -22,7 +22,7 @@ func (s *MelodyEventService) SendToPlayer(playerID entities.PlayerID, event enti
 	// Search through all rooms to find the player
 	for _, sessions := range s.handler.rooms {
 		for _, sess := range sessions {
-			if pid, exists := sess.Get("user_id"); exists && pid.(string) == string(playerID) {
+			if pid, exists := sess.Get("userId"); exists && pid.(string) == string(playerID) {
 				payload, err := json.Marshal(event)
 				if err != nil {
 					return err
