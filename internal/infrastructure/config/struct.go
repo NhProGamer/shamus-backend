@@ -46,13 +46,6 @@ func (serverConfig ServerConfig) GetPublicURL() url.URL {
 	return *issuerURL
 }
 
-type MongoConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-}
-
 var defaultConfig = Config{
 	Server: ServerConfig{
 		Host:           "127.0.0.1",
