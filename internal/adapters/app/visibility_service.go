@@ -27,12 +27,12 @@ func (s *VisibilityServiceImpl) BuildPlayersDetailsForPlayer(
 
 	for _, p := range allPlayers {
 		detail := events.PlayersDetailsData{
-			ID:             p.ID,
-			Username:       p.Username,
-			Alive:          p.IsAlive,
-			Target:         p.VotedFor,
-			ConnexionState: p.ConnectionState,
-			Role:           nil, // Role is hidden by default
+			ID:              p.ID,
+			Username:        p.Username,
+			Alive:           p.IsAlive,
+			Target:          p.VotedFor,
+			ConnectionState: p.ConnectionState,
+			Role:            nil, // Role is hidden by default
 		}
 
 		// Determine if role should be revealed
