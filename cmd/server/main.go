@@ -52,6 +52,12 @@ func main() {
 		DB:       cfg.Redis.DB,
 	})
 
+	// Verify Redis connection
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+	log.Println("Connected to Redis")
+
 	// Wire up dependencies
 	gameRepo := infra_adapters.NewRedisGameRepo(rdb)
 	gameService := app_adapters.NewGameService(gameRepo)
