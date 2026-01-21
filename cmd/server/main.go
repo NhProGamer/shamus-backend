@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"log"
-	"shamus-backend/internal/adapters/api/http"
+	"net/http"
+	"os"
+	"os/signal"
+	httphandler "shamus-backend/internal/adapters/api/http"
 	"shamus-backend/internal/adapters/api/ws"
 	"shamus-backend/internal/adapters/app_adapters"
 	"shamus-backend/internal/adapters/infra_adapters"
@@ -11,6 +14,7 @@ import (
 	"shamus-backend/internal/infrastructure/controllers"
 	"shamus-backend/internal/infrastructure/routes"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -61,7 +65,7 @@ func main() {
 	// Wire up dependencies
 	gameRepo := infra_adapters.NewRedisGameRepo(rdb)
 	gameService := app_adapters.NewGameService(gameRepo)
-	httpHandler := http.NewGameHandler(gameService)
+	httpHandler := httphandler.NewGameHandler(gameService)
 	wsHandler := ws.NewWebSocketHandler(m, gameService)
 
 	// Initialize routes
@@ -73,10 +77,34 @@ func main() {
 		OIDCProvider:     provider,
 	})
 
-	// Start server
+	// Start server with graceful shutdown
 	addr := cfg.Server.Host + ":" + strconv.Itoa(cfg.Server.Port)
-	log.Printf("Starting server on %s", addr)
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
 	}
+
+	go func() {
+		log.Printf("Starting server on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	// Give outstanding requests 5 seconds to complete
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exited")
 }
