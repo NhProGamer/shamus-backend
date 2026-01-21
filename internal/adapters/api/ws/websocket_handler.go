@@ -228,6 +228,17 @@ func (h *WebSocketHandler) setupEvents() {
 					return
 				}
 
+				// Validate message content
+				if len(message.Message) == 0 {
+					s.Write([]byte("Message cannot be empty"))
+					return
+				}
+				const maxMessageLength = 500
+				if len(message.Message) > maxMessageLength {
+					s.Write([]byte("Message is too long"))
+					return
+				}
+
 				// Get game state for phase info
 				game, err := h.gameService.GetGame(gameID)
 				if err != nil {
