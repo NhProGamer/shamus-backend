@@ -7,12 +7,12 @@ import (
 	"shamus-backend/internal/domain/ports"
 )
 
-// ChatServiceImpl implements the ChatService interface
-type ChatServiceImpl struct{}
+// ChatService implements the ports.ChatService interface
+type ChatService struct{}
 
 // NewChatService creates a new ChatService
 func NewChatService() ports.ChatService {
-	return &ChatServiceImpl{}
+	return &ChatService{}
 }
 
 // CanSendToChannel checks if a player can send messages to a specific channel
@@ -20,7 +20,7 @@ func NewChatService() ports.ChatService {
 // - Village channel: only during day phases (Day/Vote), player must be alive
 // - Werewolf channel: only during night, player must be alive and a werewolf
 // - Lovers channel: only during night, player must be alive and a lover
-func (s *ChatServiceImpl) CanSendToChannel(
+func (s *ChatService) CanSendToChannel(
 	sender *entities.Player,
 	channel events.ChatChannel,
 	gamePhase entities.GamePhase,
@@ -51,7 +51,7 @@ func (s *ChatServiceImpl) CanSendToChannel(
 // - Village channel: all players receive (during day phases)
 // - Werewolf channel: only werewolves receive (during night)
 // - Lovers channel: only lovers receive (during night)
-func (s *ChatServiceImpl) GetChannelRecipients(
+func (s *ChatService) GetChannelRecipients(
 	channel events.ChatChannel,
 	allPlayers []*entities.Player,
 	gamePhase entities.GamePhase,

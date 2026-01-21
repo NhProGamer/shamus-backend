@@ -7,17 +7,17 @@ import (
 	"shamus-backend/internal/domain/ports"
 )
 
-// VisibilityServiceImpl implements the VisibilityService interface
-type VisibilityServiceImpl struct{}
+// VisibilityService implements the ports.VisibilityService interface
+type VisibilityService struct{}
 
 // NewVisibilityService creates a new VisibilityService
 func NewVisibilityService() ports.VisibilityService {
-	return &VisibilityServiceImpl{}
+	return &VisibilityService{}
 }
 
 // BuildPlayersDetailsForPlayer returns the player list with appropriate role visibility
 // based on the viewer's role and the current game phase.
-func (s *VisibilityServiceImpl) BuildPlayersDetailsForPlayer(
+func (s *VisibilityService) BuildPlayersDetailsForPlayer(
 	viewer *entities.Player,
 	allPlayers []*entities.Player,
 	gamePhase entities.GamePhase,
@@ -48,7 +48,7 @@ func (s *VisibilityServiceImpl) BuildPlayersDetailsForPlayer(
 }
 
 // shouldRevealRole determines if target's role should be visible to viewer
-func (s *VisibilityServiceImpl) shouldRevealRole(
+func (s *VisibilityService) shouldRevealRole(
 	viewer, target *entities.Player,
 	viewerIsWerewolf bool,
 	phase entities.GamePhase,
