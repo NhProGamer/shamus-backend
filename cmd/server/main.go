@@ -64,9 +64,20 @@ func main() {
 
 	// Wire up dependencies
 	gameRepo := infra.NewRedisGameRepo(rdb)
+	playerRepo := infra.NewRedisPlayerRepo(rdb)
+
 	gameService := app.NewGameService(gameRepo)
-	httpHandler := httphandler.NewGameHandler(gameService)
+
+	// Create WebSocket handler first (without PlayerService to break circular dependency)
 	wsHandler := ws.NewWebSocketHandler(m, gameService)
+
+	// Create PlayerService with WebSocketHandler as ConnectionChecker
+	playerService := app.NewPlayerService(playerRepo, gameRepo, wsHandler)
+
+	// Inject PlayerService into WebSocketHandler (completes the wiring)
+	wsHandler.SetPlayerService(playerService)
+
+	httpHandler := httphandler.NewGameHandler(gameService)
 
 	// Initialize routes
 	routes.InitRoutes(r, &controllers.AppContext{
