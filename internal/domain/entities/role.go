@@ -24,6 +24,7 @@ const (
 	ClanVillager Clan = "villager"
 	ClanWerewolf Clan = "werewolf"
 	ClanRogue    Clan = "rogue"
+	ClanLovers   Clan = "lovers" // Added by Cupid's ability, not a base clan
 )
 
 func GetClan(role RoleType) Clan {
