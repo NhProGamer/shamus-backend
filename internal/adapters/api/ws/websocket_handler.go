@@ -3,45 +3,45 @@ package ws
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
-	"shamus-backend/internal/adapters/app_adapters"
-	"shamus-backend/internal/domain/entities/events"
-	"sync"
-
 	"shamus-backend/internal/domain/entities"
+	"shamus-backend/internal/domain/entities/events"
+	"shamus-backend/internal/domain/ports"
+	"sync"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"github.com/olahol/melody"
 )
 
-// SessionManager gère les connexions actives en mémoire
+// WebSocketHandler manages WebSocket connections for games
 type WebSocketHandler struct {
-	melody  *melody.Melody
-	service *app_adapters.GameService
+	melody      *melody.Melody
+	gameService ports.GameService
 
-	// Map Locale : GameID -> Liste de sessions (Pour le broadcast ciblé)
+	// rooms maps GameID to list of sessions for targeted broadcast
 	rooms map[entities.GameID][]*melody.Session
 	lock  sync.RWMutex
 }
 
-func NewWebSocketHandler(m *melody.Melody, s *app_adapters.GameService) *WebSocketHandler {
+func NewWebSocketHandler(m *melody.Melody, gameService ports.GameService) *WebSocketHandler {
 	handler := &WebSocketHandler{
-		melody:  m,
-		service: s,
-		rooms:   make(map[entities.GameID][]*melody.Session),
+		melody:      m,
+		gameService: gameService,
+		rooms:       make(map[entities.GameID][]*melody.Session),
 	}
 
-	// Configuration des événements Melody
 	handler.setupEvents()
 	return handler
 }
 
-// HandleWS : La route Gin GET /ws
+// HandleWS handles GET /ws/:gameID requests
 func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 	gameIDStr := c.Param("gameID")
 	if gameIDStr == "" {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid game ID"})
+		return
 	}
 	userIDstr, exist := c.Get("userID")
 	if !exist || userIDstr == "" {
@@ -65,8 +65,7 @@ func (h *WebSocketHandler) HandleWS(c *gin.Context) {
 }
 
 func (h *WebSocketHandler) setupEvents() {
-
-	// 1. Connexion (Join Game)
+	// Handle connection (Join Game)
 	h.melody.HandleConnect(func(s *melody.Session) {
 		gameIDstr, exist := s.Get("game_id")
 		if !exist || gameIDstr == "" {
@@ -86,29 +85,29 @@ func (h *WebSocketHandler) setupEvents() {
 			return
 		}
 
-		// Appel au Service pour la logique métier (Vérif existence + Ajout DB)
-		updatedGame, err := h.service.JoinGame(gameID, playerID)
+		// Call service for business logic (verify existence + add to DB)
+		updatedGame, err := h.gameService.JoinGame(gameID, playerID)
 		if err != nil {
 			s.CloseWithMsg([]byte(err.Error()))
 			return
 		}
 
-		// Ajout à la Room Locale (Mémoire)
+		// Add to local room (in-memory)
 		h.joinLocalRoom(gameID, s)
 
-		// Broadcast à tous les joueurs de la room : "Nouveau joueur + État à jour"
+		// Broadcast to all players in room: new player + updated state
 		h.broadcastGameState(gameID, updatedGame)
 	})
 
-	// 2. Déconnexion
+	// Handle disconnection
 	h.melody.HandleDisconnect(func(s *melody.Session) {
-		val, exists := s.Get("gameId")
+		val, exists := s.Get("game_id")
 		if exists {
-			h.leaveLocalRoom(val.(entities.GameID), s)
+			h.leaveLocalRoom(entities.GameID(val.(string)), s)
 		}
 	})
 
-	// 3. Messages (Gameplay)
+	// Handle messages (Gameplay)
 	h.melody.HandleMessage(func(s *melody.Session, msg []byte) {
 		userInfoRaw, exist := s.Get("user_info")
 		if !exist || userInfoRaw == nil {
@@ -117,18 +116,20 @@ func (h *WebSocketHandler) setupEvents() {
 		}
 		userInfo := userInfoRaw.(oidc.UserInfo)
 		var event entities.RawEvent
-		err := json.Unmarshal(msg, &event) // msg est []byte du WebSocket
-		if err != nil {
+		if err := json.Unmarshal(msg, &event); err != nil {
 			s.Write([]byte("Invalid JSON"))
 			return
 		}
+
 		switch event.Channel {
 		case entities.EventChannelGameEvent:
 			switch event.Type {
 			case events.EventTypeChatMessage:
 				var message events.ChatMessageEvent
 				if err := json.Unmarshal(event.Data, &message); err != nil {
-					panic(err)
+					log.Printf("Failed to unmarshal chat message: %v", err)
+					s.Write([]byte("Invalid message format"))
+					return
 				}
 				gameIDstr, exist := s.Get("game_id")
 				if !exist || gameIDstr == "" {
@@ -147,20 +148,19 @@ func (h *WebSocketHandler) setupEvents() {
 					return
 				}
 				h.broadcastToRoom(entities.GameID(gameIDstr.(string)), reforgedMsg)
-
 			}
 		}
 	})
 }
 
-// --- Helpers de gestion de Room (Thread-Safe) ---
-
+// joinLocalRoom adds a session to a game room (thread-safe)
 func (h *WebSocketHandler) joinLocalRoom(gid entities.GameID, s *melody.Session) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	h.rooms[gid] = append(h.rooms[gid], s)
 }
 
+// leaveLocalRoom removes a session from a game room (thread-safe)
 func (h *WebSocketHandler) leaveLocalRoom(gid entities.GameID, s *melody.Session) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
@@ -168,15 +168,15 @@ func (h *WebSocketHandler) leaveLocalRoom(gid entities.GameID, s *melody.Session
 	sessions := h.rooms[gid]
 	for i, sess := range sessions {
 		if sess == s {
-			// Suppression rapide
 			h.rooms[gid] = append(sessions[:i], sessions[i+1:]...)
 			break
 		}
 	}
 }
 
+// broadcastGameState sends game state to all players in a room
 func (h *WebSocketHandler) broadcastGameState(gid entities.GameID, game *entities.Game) {
-	h.lock.RLock() // Read lock suffisant
+	h.lock.RLock()
 	defer h.lock.RUnlock()
 
 	sessions, ok := h.rooms[gid]
@@ -184,13 +184,11 @@ func (h *WebSocketHandler) broadcastGameState(gid entities.GameID, game *entitie
 		return
 	}
 
-	// Préparer le payload JSON une seule fois
 	payload, _ := json.Marshal(events.NewGameDataEvent(events.GameDataEventData{
-		ID:     game.ID,
-		Status: game.Status,
-		Phase:  game.Phase,
-		Day:    game.Day,
-		//Players: game.Players,
+		ID:       game.ID,
+		Status:   game.Status,
+		Phase:    game.Phase,
+		Day:      game.Day,
 		Host:     game.HostID,
 		Settings: game.Settings,
 	}))
@@ -200,6 +198,7 @@ func (h *WebSocketHandler) broadcastGameState(gid entities.GameID, game *entitie
 	}
 }
 
+// broadcastToRoom sends a message to all sessions in a room
 func (h *WebSocketHandler) broadcastToRoom(gameID entities.GameID, msg []byte) error {
 	h.lock.RLock()
 	defer h.lock.RUnlock()
