@@ -60,10 +60,6 @@ func main() {
 	httpHandler := http.NewGameHandler(gameService)
 	wsHandler := ws.NewWebSocketHandler(m, gameService)
 
-	a, e := gameService.CreateNewGame("test-game-1")
-	log.Println(a)
-	log.Println(e)
-
 	routes.InitRoutes(r, &controllers.AppContext{
 		Config:           &Configuration,
 		GameService:      gameService,
