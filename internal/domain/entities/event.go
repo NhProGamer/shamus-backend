@@ -7,10 +7,10 @@ type EventType string
 type EventChannel string
 
 const (
-	EventChannelGameEvent EventChannel = "game_event"
-	EventChannelConnexion EventChannel = "conn_event"
-	EventChannelSettings  EventChannel = "settings_event"
-	EventChannelTimer     EventChannel = "timer_event"
+	EventChannelGameEvent  EventChannel = "game_event"
+	EventChannelConnection EventChannel = "conn_event"
+	EventChannelSettings   EventChannel = "settings_event"
+	EventChannelTimer      EventChannel = "timer_event"
 )
 
 type Event[T any] struct {
