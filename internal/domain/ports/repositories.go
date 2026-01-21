@@ -27,4 +27,13 @@ type PlayerRepository interface {
 
 	// GetPlayersByGame retrieves all players in a game
 	GetPlayersByGame(gameID entities.GameID) ([]*entities.Player, error)
+
+	// AddPlayerToGame adds a player ID to the game's player set
+	AddPlayerToGame(gameID entities.GameID, playerID entities.PlayerID) error
+
+	// RemovePlayerFromGame removes a player ID from the game's player set
+	RemovePlayerFromGame(gameID entities.GameID, playerID entities.PlayerID) error
+
+	// DeleteGamePlayers removes all players associated with a game (cleanup when game ends)
+	DeleteGamePlayers(gameID entities.GameID) error
 }

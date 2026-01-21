@@ -14,6 +14,28 @@ type GameService interface {
 	GetGame(gameID entities.GameID) (*entities.Game, error)
 }
 
+// PlayerService defines player management operations
+type PlayerService interface {
+	// HandleConnect is called when a player connects via WebSocket
+	// Returns the Player and a boolean indicating if this is a reconnection
+	HandleConnect(gameID entities.GameID, playerID entities.PlayerID, username string) (*entities.Player, bool, error)
+
+	// HandleDisconnect is called when a player disconnects from WebSocket
+	HandleDisconnect(gameID entities.GameID, playerID entities.PlayerID) error
+
+	// GetPlayer retrieves a player by ID
+	GetPlayer(id entities.PlayerID) (*entities.Player, error)
+
+	// GetGamePlayers retrieves all players in a game
+	GetGamePlayers(gameID entities.GameID) ([]*entities.Player, error)
+
+	// CleanupGamePlayers removes all players when a game ends
+	CleanupGamePlayers(gameID entities.GameID) error
+
+	// IsPlayerConnected checks if a player has an active WebSocket session
+	IsPlayerConnected(playerID entities.PlayerID) bool
+}
+
 // EventService defines operations for sending events to players
 type EventService interface {
 	// SendToPlayer sends an event to a specific player

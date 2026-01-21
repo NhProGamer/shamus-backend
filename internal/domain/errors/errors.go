@@ -39,14 +39,17 @@ var (
 	ErrGameEnded         = New("GAME_ENDED", "game has ended")
 	ErrGameFull          = New("GAME_FULL", "game is full")
 	ErrGameNotStarted    = New("GAME_NOT_STARTED", "game has not started")
+	ErrGameNotWaiting    = New("GAME_NOT_WAITING", "cannot join a game that is not in waiting state")
 )
 
 // Player errors
 var (
-	ErrPlayerNotFound      = New("PLAYER_NOT_FOUND", "player not found")
-	ErrPlayerAlreadyExists = New("PLAYER_ALREADY_EXISTS", "player already exists")
-	ErrPlayerNotInGame     = New("PLAYER_NOT_IN_GAME", "player is not in this game")
-	ErrPlayerAlreadyInGame = New("PLAYER_ALREADY_IN_GAME", "player is already in a game")
+	ErrPlayerNotFound         = New("PLAYER_NOT_FOUND", "player not found")
+	ErrPlayerAlreadyExists    = New("PLAYER_ALREADY_EXISTS", "player already exists")
+	ErrPlayerNotInGame        = New("PLAYER_NOT_IN_GAME", "player is not in this game")
+	ErrPlayerAlreadyInGame    = New("PLAYER_ALREADY_IN_GAME", "player is already in a game")
+	ErrPlayerAlreadyConnected = New("PLAYER_ALREADY_CONNECTED", "player is already connected to this game")
+	ErrPlayerInactive         = New("PLAYER_INACTIVE", "player is inactive and cannot rejoin")
 )
 
 // Auth errors
