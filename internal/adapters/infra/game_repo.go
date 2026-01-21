@@ -3,8 +3,8 @@ package infra
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"shamus-backend/internal/domain/entities"
+	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 	"time"
 
@@ -34,7 +34,7 @@ func (gm *RedisGameRepo) SaveGame(game *entities.Game) error {
 func (gm *RedisGameRepo) GetGame(id entities.GameID) (*entities.Game, error) {
 	val, err := gm.rdb.Get(context.Background(), "game:"+string(id)).Result()
 	if err == redis.Nil {
-		return nil, errors.New("game not found")
+		return nil, apperrors.ErrGameNotFound
 	} else if err != nil {
 		return nil, err
 	}
