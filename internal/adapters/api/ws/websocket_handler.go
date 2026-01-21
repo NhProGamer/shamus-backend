@@ -22,14 +22,17 @@ type WebSocketHandler struct {
 
 	// rooms maps GameID to list of sessions for targeted broadcast
 	rooms map[entities.GameID][]*melody.Session
-	lock  sync.RWMutex
+	// playerSessions maps PlayerID to session for O(1) player lookup
+	playerSessions map[entities.PlayerID]*melody.Session
+	lock           sync.RWMutex
 }
 
 func NewWebSocketHandler(m *melody.Melody, gameService ports.GameService) *WebSocketHandler {
 	handler := &WebSocketHandler{
-		melody:      m,
-		gameService: gameService,
-		rooms:       make(map[entities.GameID][]*melody.Session),
+		melody:         m,
+		gameService:    gameService,
+		rooms:          make(map[entities.GameID][]*melody.Session),
+		playerSessions: make(map[entities.PlayerID]*melody.Session),
 	}
 
 	handler.setupEvents()
@@ -93,7 +96,7 @@ func (h *WebSocketHandler) setupEvents() {
 		}
 
 		// Add to local room (in-memory)
-		h.joinLocalRoom(gameID, s)
+		h.joinLocalRoom(gameID, playerID, s)
 
 		// Broadcast to all players in room: new player + updated state
 		h.broadcastGameState(gameID, updatedGame)
@@ -101,9 +104,12 @@ func (h *WebSocketHandler) setupEvents() {
 
 	// Handle disconnection
 	h.melody.HandleDisconnect(func(s *melody.Session) {
-		val, exists := s.Get("gameId")
-		if exists {
-			h.leaveLocalRoom(entities.GameID(val.(string)), s)
+		gameIDVal, gameExists := s.Get("gameId")
+		userIDVal, userExists := s.Get("userId")
+		if gameExists && userExists {
+			gameID := entities.GameID(gameIDVal.(string))
+			playerID := entities.PlayerID(userIDVal.(string))
+			h.leaveLocalRoom(gameID, playerID, s)
 		}
 	})
 
@@ -154,14 +160,15 @@ func (h *WebSocketHandler) setupEvents() {
 }
 
 // joinLocalRoom adds a session to a game room (thread-safe)
-func (h *WebSocketHandler) joinLocalRoom(gid entities.GameID, s *melody.Session) {
+func (h *WebSocketHandler) joinLocalRoom(gid entities.GameID, playerID entities.PlayerID, s *melody.Session) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	h.rooms[gid] = append(h.rooms[gid], s)
+	h.playerSessions[playerID] = s
 }
 
 // leaveLocalRoom removes a session from a game room (thread-safe)
-func (h *WebSocketHandler) leaveLocalRoom(gid entities.GameID, s *melody.Session) {
+func (h *WebSocketHandler) leaveLocalRoom(gid entities.GameID, playerID entities.PlayerID, s *melody.Session) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
@@ -172,6 +179,7 @@ func (h *WebSocketHandler) leaveLocalRoom(gid entities.GameID, s *melody.Session
 			break
 		}
 	}
+	delete(h.playerSessions, playerID)
 }
 
 // broadcastGameState sends game state to all players in a room
@@ -219,14 +227,11 @@ func (h *WebSocketHandler) SendToPlayer(playerID entities.PlayerID, payload []by
 	h.lock.RLock()
 	defer h.lock.RUnlock()
 
-	for _, sessions := range h.rooms {
-		for _, sess := range sessions {
-			if pid, exists := sess.Get("userId"); exists && pid.(string) == string(playerID) {
-				return sess.Write(payload)
-			}
-		}
+	sess, ok := h.playerSessions[playerID]
+	if !ok {
+		return errors.New("player not connected")
 	}
-	return errors.New("player not connected")
+	return sess.Write(payload)
 }
 
 // BroadcastToGame sends a message to all players in a game (public API for EventService)
