@@ -3,6 +3,7 @@ package app
 import (
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	"shamus-backend/internal/domain/helpers"
 	"shamus-backend/internal/domain/ports"
 )
 
@@ -31,13 +32,13 @@ func (s *ChatServiceImpl) CanSendToChannel(
 
 	switch channel {
 	case events.ChatChannelVillage:
-		return s.isDayPhase(gamePhase)
+		return helpers.IsDayPhase(gamePhase)
 
 	case events.ChatChannelWerewolf:
-		return gamePhase == entities.PhaseNight && s.isWerewolf(sender)
+		return gamePhase == entities.PhaseNight && helpers.IsWerewolf(sender)
 
 	case events.ChatChannelLovers:
-		return gamePhase == entities.PhaseNight && s.isLover(sender)
+		return gamePhase == entities.PhaseNight && helpers.IsLover(sender)
 
 	default:
 		return false
@@ -60,7 +61,7 @@ func (s *ChatServiceImpl) GetChannelRecipients(
 	switch channel {
 	case events.ChatChannelVillage:
 		// During day, everyone can receive village messages
-		if s.isDayPhase(gamePhase) {
+		if helpers.IsDayPhase(gamePhase) {
 			return allPlayers
 		}
 		// During night, no one receives village messages
@@ -72,7 +73,7 @@ func (s *ChatServiceImpl) GetChannelRecipients(
 			return recipients
 		}
 		for _, p := range allPlayers {
-			if s.isWerewolf(p) {
+			if helpers.IsWerewolf(p) {
 				recipients = append(recipients, p)
 			}
 		}
@@ -84,7 +85,7 @@ func (s *ChatServiceImpl) GetChannelRecipients(
 			return recipients
 		}
 		for _, p := range allPlayers {
-			if s.isLover(p) {
+			if helpers.IsLover(p) {
 				recipients = append(recipients, p)
 			}
 		}
@@ -93,38 +94,4 @@ func (s *ChatServiceImpl) GetChannelRecipients(
 	default:
 		return recipients
 	}
-}
-
-// isDayPhase returns true if the phase is during daytime (Day or Vote)
-func (s *ChatServiceImpl) isDayPhase(phase entities.GamePhase) bool {
-	return phase == entities.PhaseDay || phase == entities.PhaseVote || phase == entities.PhaseStart
-}
-
-// isWerewolf checks if a player belongs to the werewolf clan
-func (s *ChatServiceImpl) isWerewolf(p *entities.Player) bool {
-	if p == nil || p.Role == nil {
-		return false
-	}
-	for _, clan := range p.Role.GetClans() {
-		if clan == entities.ClanWerewolf {
-			return true
-		}
-	}
-	return false
-}
-
-// isLover checks if a player has the lover status
-// TODO: Implement lover detection when Cupid role is added
-func (s *ChatServiceImpl) isLover(p *entities.Player) bool {
-	if p == nil || p.Role == nil {
-		return false
-	}
-	// For now, check if player has ClanLovers
-	// This will be set by Cupid's ability when implemented
-	for _, clan := range p.Role.GetClans() {
-		if clan == entities.ClanLovers {
-			return true
-		}
-	}
-	return false
 }
