@@ -1,6 +1,9 @@
 package config
 
-import "net/url"
+import (
+	"fmt"
+	"net/url"
+)
 
 type Config struct {
 	Server ServerConfig `yaml:"server"`
@@ -30,20 +33,22 @@ type RedisConfig struct {
 	DB       int    `yaml:"db"`
 }
 
-func (oidcConfig OIDCConfig) GetIssuerURL() url.URL {
+// GetIssuerURL parses and returns the OIDC issuer URL
+func (oidcConfig OIDCConfig) GetIssuerURL() (*url.URL, error) {
 	issuerURL, err := url.Parse(oidcConfig.Issuer)
 	if err != nil {
-		panic("Invalid OIDC issuer URL in configuration: " + err.Error())
+		return nil, fmt.Errorf("invalid OIDC issuer URL: %w", err)
 	}
-	return *issuerURL
+	return issuerURL, nil
 }
 
-func (serverConfig ServerConfig) GetPublicURL() url.URL {
-	issuerURL, err := url.Parse(serverConfig.PublicUrl)
+// GetPublicURL parses and returns the server public URL
+func (serverConfig ServerConfig) GetPublicURL() (*url.URL, error) {
+	publicURL, err := url.Parse(serverConfig.PublicUrl)
 	if err != nil {
-		panic("Invalid OIDC issuer URL in configuration: " + err.Error())
+		return nil, fmt.Errorf("invalid server public URL: %w", err)
 	}
-	return *issuerURL
+	return publicURL, nil
 }
 
 var defaultConfig = Config{

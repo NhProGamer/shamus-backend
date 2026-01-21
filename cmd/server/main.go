@@ -21,55 +21,56 @@ import (
 )
 
 func main() {
-	var err error
-	var Configuration config.Config
-	Configuration, err = config.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Error while loading config file: %v", err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
+
 	r := gin.Default()
 	m := melody.New()
 
+	// Configure CORS for frontend
 	r.Use(cors.New(cors.Config{
-		// Autoriser l'origine de ton frontend Vue.js
-		AllowOrigins: []string{"http://localhost:3000", "http://localhost:5173"},
-		// Autoriser les méthodes HTTP utilisées
-		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		// Autoriser les headers spécifiques (Authorization est vital pour ton token Bearer)
-		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		// Autoriser l'envoi de cookies/auth headers
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: true,
-		// Durée du cache de la réponse preflight
-		MaxAge: 12 * time.Hour,
+		MaxAge:           12 * time.Hour,
 	}))
 
-	c := context.Background()
-	provider, err := oidc.NewProvider(c, Configuration.OIDC.Issuer)
+	// Initialize OIDC provider
+	ctx := context.Background()
+	provider, err := oidc.NewProvider(ctx, cfg.OIDC.Issuer)
 	if err != nil {
-		panic("Impossible d'initialiser le provider OIDC: " + err.Error())
+		log.Fatalf("Failed to initialize OIDC provider: %v", err)
 	}
 
+	// Initialize Redis client
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     Configuration.Redis.Host + ":" + strconv.Itoa(Configuration.Redis.Port),
-		Password: Configuration.Redis.Password,
-		DB:       Configuration.Redis.DB,
+		Addr:     cfg.Redis.Host + ":" + strconv.Itoa(cfg.Redis.Port),
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
 	})
 
+	// Wire up dependencies
 	gameRepo := infra_adapters.NewRedisGameRepo(rdb)
 	gameService := app_adapters.NewGameService(gameRepo)
 	httpHandler := http.NewGameHandler(gameService)
 	wsHandler := ws.NewWebSocketHandler(m, gameService)
 
+	// Initialize routes
 	routes.InitRoutes(r, &controllers.AppContext{
-		Config:           &Configuration,
+		Config:           &cfg,
 		GameService:      gameService,
 		WebsocketHandler: wsHandler,
 		HttpHandler:      httpHandler,
 		OIDCProvider:     provider,
 	})
 
-	if err := r.Run(Configuration.Server.Host + ":" + strconv.Itoa(Configuration.Server.Port)); err != nil {
-		log.Fatalf("Could not start the server: %v", err)
+	// Start server
+	addr := cfg.Server.Host + ":" + strconv.Itoa(cfg.Server.Port)
+	log.Printf("Starting server on %s", addr)
+	if err := r.Run(addr); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
 	}
-
 }
