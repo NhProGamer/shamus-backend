@@ -44,7 +44,7 @@ func NewVillagerRole() *roles.VillagerRole {
 func NewWerewolfRole() *roles.WerewolfRole {
 	return &roles.WerewolfRole{
 		Clans: []entities.Clan{
-			entities.ClanVillager,
+			entities.ClanWerewolf,
 		},
 		Abilities: []entities.Ability{
 			abilities.NewWerewolfKillAbility(),
