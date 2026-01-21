@@ -21,11 +21,14 @@ type Event[T any] struct {
 
 type RawEvent = Event[json.RawMessage]
 
-func (e Event[T]) ToRawEvent() RawEvent {
-	data, _ := json.Marshal(e.Data)
+func (e Event[T]) ToRawEvent() (RawEvent, error) {
+	data, err := json.Marshal(e.Data)
+	if err != nil {
+		return RawEvent{}, err
+	}
 	return RawEvent{
 		Channel: e.Channel,
 		Type:    e.Type,
 		Data:    data,
-	}
+	}, nil
 }

@@ -20,12 +20,15 @@ type Action[T any] struct {
 
 type RawAction = Action[json.RawMessage]
 
-func (e Action[T]) ToRawAction() RawAction {
-	data, _ := json.Marshal(e.Data)
+func (e Action[T]) ToRawAction() (RawAction, error) {
+	data, err := json.Marshal(e.Data)
+	if err != nil {
+		return RawAction{}, err
+	}
 	return RawAction{
 		ID:      e.ID,
 		Channel: e.Channel,
 		Type:    e.Type,
 		Data:    data,
-	}
+	}, nil
 }
