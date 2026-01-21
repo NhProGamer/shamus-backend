@@ -1,6 +1,9 @@
 package ports
 
-import "shamus-backend/internal/domain/entities"
+import (
+	"shamus-backend/internal/domain/entities"
+	"shamus-backend/internal/domain/entities/events"
+)
 
 // GameService defines the game business logic operations
 type GameService interface {
@@ -47,4 +50,19 @@ type EventService interface {
 
 	// BroadcastToGame sends an event to all players in a game
 	BroadcastToGame(gameID entities.GameID, event entities.RawEvent) error
+}
+
+// VisibilityService determines what information each player can see about other players
+type VisibilityService interface {
+	// BuildPlayersDetailsForPlayer returns the player list with appropriate role visibility
+	// based on the viewer's role and the current game phase.
+	// Rules:
+	// - A player always sees their own role
+	// - Werewolves see other werewolves' roles
+	// - Dead players' roles are revealed when day starts (PhaseDay or PhaseVote)
+	BuildPlayersDetailsForPlayer(
+		viewer *entities.Player,
+		allPlayers []*entities.Player,
+		gamePhase entities.GamePhase,
+	) []events.PlayersDetailsData
 }
