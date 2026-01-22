@@ -2,7 +2,6 @@ package infra
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/factories"
@@ -41,7 +40,7 @@ func gamePlayersKey(gameID entities.GameID) string {
 
 // SavePlayer persists a player to Redis with 24h TTL
 func (r *RedisPlayerRepo) SavePlayer(player *entities.Player) error {
-	data, err := json.Marshal(player)
+	data, err := JSON.Marshal(player)
 	if err != nil {
 		return err
 	}
@@ -58,7 +57,7 @@ func (r *RedisPlayerRepo) SavePlayers(players []*entities.Player) error {
 	pipe := r.rdb.Pipeline()
 
 	for _, player := range players {
-		data, err := json.Marshal(player)
+		data, err := JSON.Marshal(player)
 		if err != nil {
 			return err
 		}
@@ -79,7 +78,7 @@ func (r *RedisPlayerRepo) GetPlayer(id entities.PlayerID) (*entities.Player, err
 	}
 
 	var player entities.Player
-	err = json.Unmarshal([]byte(val), &player)
+	err = JSON.Unmarshal([]byte(val), &player)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +128,7 @@ func (r *RedisPlayerRepo) GetPlayersByGame(gameID entities.GameID) ([]*entities.
 			continue // Player was deleted but still in set (edge case)
 		}
 		var player entities.Player
-		if err := json.Unmarshal([]byte(val.(string)), &player); err != nil {
+		if err := JSON.Unmarshal([]byte(val.(string)), &player); err != nil {
 			continue // Skip invalid data
 		}
 		// Reconstruct Role from RoleType

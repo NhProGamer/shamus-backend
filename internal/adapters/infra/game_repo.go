@@ -2,7 +2,6 @@ package infra
 
 import (
 	"context"
-	"encoding/json"
 	"shamus-backend/internal/domain/entities"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
@@ -23,7 +22,7 @@ func NewRedisGameRepo(rdb *redis.Client) ports.GameRepository {
 
 // SaveGame persists a game to Redis with 24h TTL
 func (gm *RedisGameRepo) SaveGame(game *entities.Game) error {
-	data, err := json.Marshal(game)
+	data, err := JSON.Marshal(game)
 	if err != nil {
 		return err
 	}
@@ -40,7 +39,7 @@ func (gm *RedisGameRepo) GetGame(id entities.GameID) (*entities.Game, error) {
 	}
 
 	var game entities.Game
-	err = json.Unmarshal([]byte(val), &game)
+	err = JSON.Unmarshal([]byte(val), &game)
 	if err != nil {
 		return nil, err
 	}
