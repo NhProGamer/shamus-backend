@@ -723,6 +723,10 @@ func (e *GameEngine) HandleVillageVote(gameID entities.GameID, voterID entities.
 
 	// 3. Validate target (if not abstaining)
 	if targetID != nil {
+		// Cannot vote for yourself
+		if *targetID == voterID {
+			return ErrCannotTargetSelf
+		}
 		target, err := e.playerRepo.GetPlayer(*targetID)
 		if err != nil {
 			return ErrInvalidTarget
