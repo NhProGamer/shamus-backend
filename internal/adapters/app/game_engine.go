@@ -189,13 +189,22 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 		return err
 	}
 
-	// Process night deaths
+	// Process night deaths and broadcast individual death events
 	deaths := e.nightService.GetPendingDeaths(gameID)
 	for _, deathID := range deaths {
 		for _, p := range players {
 			if p.ID == deathID {
 				p.Kill()
 				e.playerRepo.SavePlayer(p)
+
+				// Broadcast individual death event with role reveal
+				var role entities.RoleType
+				if p.Role != nil {
+					role = p.Role.GetType()
+				}
+				deathEvent := events.NewDeathEvent(p.ID, role)
+				payload, _ := json.Marshal(deathEvent)
+				e.broadcaster.BroadcastToGame(gameID, payload)
 				break
 			}
 		}
@@ -204,7 +213,9 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 	// Clear night state
 	e.nightService.ClearNight(gameID)
 
-	// Check win condition
+	// Check win condition after deaths
+	// Refresh players to get updated alive status
+	players, _ = e.playerRepo.GetPlayersByGame(gameID)
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
 		return e.EndGame(gameID, game, winResult)
@@ -216,8 +227,8 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 		return err
 	}
 
-	// Broadcast day event with deaths
-	dayEvent := events.NewDayEvent(deaths)
+	// Broadcast day event (signals day start)
+	dayEvent := events.NewDayEvent(game.Day)
 	payload, _ := json.Marshal(dayEvent)
 	e.broadcaster.BroadcastToGame(gameID, payload)
 

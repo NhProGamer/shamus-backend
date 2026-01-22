@@ -4,14 +4,17 @@ import "shamus-backend/internal/domain/entities"
 
 const EventTypeDay entities.EventType = "day"
 
+// DayEventData signals the start of the day phase
+// Deaths are now announced via individual DeathEvent before this event
 type DayEventData struct {
-	Deaths []entities.PlayerID `json:"deaths"`
+	Day int `json:"day"` // Current day number
 }
 
-func NewDayEvent(deaths []entities.PlayerID) entities.Event[DayEventData] {
+// NewDayEvent creates a new day phase event
+func NewDayEvent(day int) entities.Event[DayEventData] {
 	return entities.Event[DayEventData]{
 		Channel: entities.EventChannelGameEvent,
 		Type:    EventTypeDay,
-		Data:    DayEventData{Deaths: deaths},
+		Data:    DayEventData{Day: day},
 	}
 }
