@@ -80,7 +80,7 @@ func main() {
 
 	// Create game engine services (wsHandler implements Broadcaster and PlayerSender interfaces)
 	timerService := app.NewTimerService(wsHandler)
-	voteService := app.NewVoteService(wsHandler)
+	voteService := app.NewVoteService(wsHandler, wsHandler)
 	nightService := app.NewNightService(wsHandler, voteService)
 
 	// Create GameEngine and inject into WebSocketHandler

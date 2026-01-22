@@ -11,16 +11,18 @@ import (
 
 // VoteService manages voting sessions for games
 type VoteService struct {
-	votes       map[entities.GameID]*entities.Vote
-	broadcaster Broadcaster
-	lock        sync.RWMutex
+	votes        map[entities.GameID]*entities.Vote
+	broadcaster  Broadcaster
+	playerSender PlayerSender
+	lock         sync.RWMutex
 }
 
 // NewVoteService creates a new VoteService
-func NewVoteService(broadcaster Broadcaster) *VoteService {
+func NewVoteService(broadcaster Broadcaster, playerSender PlayerSender) *VoteService {
 	return &VoteService{
-		votes:       make(map[entities.GameID]*entities.Vote),
-		broadcaster: broadcaster,
+		votes:        make(map[entities.GameID]*entities.Vote),
+		broadcaster:  broadcaster,
+		playerSender: playerSender,
 	}
 }
 
@@ -119,7 +121,15 @@ func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID
 	}
 
 	// Broadcast player vote event
-	s.broadcastVoteEvent(gameID, events.NewVoteEvent(events.PlayerVote, &voterID, targetID))
+	event := events.NewVoteEvent(events.PlayerVote, &voterID, targetID)
+
+	if vote.Type == entities.VoteTypeWerewolf {
+		// Werewolf votes are only visible to werewolves (the eligible voters)
+		s.broadcastToVoters(vote, event)
+	} else {
+		// Village votes are visible to everyone
+		s.broadcastVoteEvent(gameID, event)
+	}
 
 	return nil
 }
@@ -203,4 +213,20 @@ func (s *VoteService) broadcastVoteEvent(gameID entities.GameID, event entities.
 	}
 
 	s.broadcaster.BroadcastToGame(gameID, payload)
+}
+
+// broadcastToVoters sends a vote event only to eligible voters (e.g., werewolves)
+func (s *VoteService) broadcastToVoters(vote *entities.Vote, event entities.Event[events.VoteEventData]) {
+	if s.playerSender == nil {
+		return
+	}
+
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+
+	for _, voterID := range vote.EligibleVoters {
+		s.playerSender.SendToPlayer(voterID, payload)
+	}
 }
