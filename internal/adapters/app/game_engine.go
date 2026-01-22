@@ -440,7 +440,16 @@ func (e *GameEngine) CheckWinCondition(players []*entities.Player) *WinResult {
 		}
 	}
 
-	// Villagers win if all werewolves are dead
+	// Draw if everyone is dead (e.g., witch poisons last villager while werewolves kill witch)
+	if werewolvesAlive == 0 && villagersAlive == 0 {
+		return &WinResult{
+			GameEnded:   true,
+			WinningClan: entities.ClanNone,
+			Winners:     []entities.PlayerID{},
+		}
+	}
+
+	// Villagers win if all werewolves are dead (and at least one villager survives)
 	if werewolvesAlive == 0 {
 		return &WinResult{
 			GameEnded:   true,

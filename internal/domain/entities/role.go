@@ -24,7 +24,9 @@ const (
 	ClanVillager Clan = "villager"
 	ClanWerewolf Clan = "werewolf"
 	ClanRogue    Clan = "rogue"
-	ClanLovers   Clan = "lovers" // Added by Cupid's ability, not a base clan
+	ClanNone     Clan = "none" // No winner (draw - everyone died)
+	// TODO: Implement Lovers system - Cupid role, lover death cascade, lover win condition
+	ClanLovers Clan = "lovers" // Added by Cupid's ability, not a base clan
 )
 
 func GetClan(role RoleType) Clan {
