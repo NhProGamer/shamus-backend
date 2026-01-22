@@ -195,7 +195,9 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 		for _, p := range players {
 			if p.ID == deathID {
 				p.Kill()
-				e.playerRepo.SavePlayer(p)
+				if err := e.playerRepo.SavePlayer(p); err != nil {
+					log.Printf("Error saving dead player %s: %v", p.ID, err)
+				}
 
 				// Broadcast individual death event with role reveal
 				var role entities.RoleType
@@ -203,8 +205,12 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 					role = p.Role.GetType()
 				}
 				deathEvent := events.NewDeathEvent(p.ID, role)
-				payload, _ := json.Marshal(deathEvent)
-				e.broadcaster.BroadcastToGame(gameID, payload)
+				payload, err := json.Marshal(deathEvent)
+				if err != nil {
+					log.Printf("Error marshaling death event for player %s: %v", p.ID, err)
+				} else {
+					e.broadcaster.BroadcastToGame(gameID, payload)
+				}
 				break
 			}
 		}
@@ -215,7 +221,11 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 
 	// Check win condition after deaths
 	// Refresh players to get updated alive status
-	players, _ = e.playerRepo.GetPlayersByGame(gameID)
+	players, err = e.playerRepo.GetPlayersByGame(gameID)
+	if err != nil {
+		log.Printf("Error refreshing players after deaths for game %s: %v", gameID, err)
+		// Continue with stale player data rather than failing
+	}
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
 		return e.EndGame(gameID, game, winResult)
@@ -229,8 +239,12 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 
 	// Broadcast day event (signals day start)
 	dayEvent := events.NewDayEvent(game.Day)
-	payload, _ := json.Marshal(dayEvent)
-	e.broadcaster.BroadcastToGame(gameID, payload)
+	payload, err := json.Marshal(dayEvent)
+	if err != nil {
+		log.Printf("Error marshaling day event for game %s: %v", gameID, err)
+	} else {
+		e.broadcaster.BroadcastToGame(gameID, payload)
+	}
 
 	// Start day timer
 	e.timerService.StartPhaseTimer(gameID, entities.PhaseDay)
@@ -329,7 +343,9 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 		for _, p := range players {
 			if p.ID == *result.Target {
 				p.Kill()
-				e.playerRepo.SavePlayer(p)
+				if err := e.playerRepo.SavePlayer(p); err != nil {
+					log.Printf("Error saving eliminated player %s: %v", p.ID, err)
+				}
 
 				// Broadcast death event with role reveal
 				var role entities.RoleType
@@ -337,20 +353,31 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 					role = p.Role.GetType()
 				}
 				deathEvent := events.NewDeathEvent(p.ID, role)
-				payload, _ := json.Marshal(deathEvent)
-				e.broadcaster.BroadcastToGame(gameID, payload)
+				payload, err := json.Marshal(deathEvent)
+				if err != nil {
+					log.Printf("Error marshaling death event for player %s: %v", p.ID, err)
+				} else {
+					e.broadcaster.BroadcastToGame(gameID, payload)
+				}
 				break
 			}
 		}
 	}
 
 	// Refresh players after kill
-	players, _ = e.playerRepo.GetPlayersByGame(gameID)
+	players, err = e.playerRepo.GetPlayersByGame(gameID)
+	if err != nil {
+		log.Printf("Error refreshing players after vote for game %s: %v", gameID, err)
+	}
 
 	// Check win condition
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
-		game, _ := e.gameRepo.GetGame(gameID)
+		game, err := e.gameRepo.GetGame(gameID)
+		if err != nil {
+			log.Printf("Error getting game %s for end game: %v", gameID, err)
+			return err
+		}
 		return e.EndGame(gameID, game, winResult)
 	}
 
