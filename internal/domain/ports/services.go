@@ -108,3 +108,27 @@ type TimerService interface {
 	// GetRemainingTime returns the remaining time for a game's timer
 	GetRemainingTime(gameID entities.GameID) time.Duration
 }
+
+// VoteService manages voting sessions for games
+type VoteService interface {
+	// StartVillageVote starts a village vote to eliminate a player
+	StartVillageVote(gameID entities.GameID, alivePlayers []*entities.Player) (*entities.Vote, error)
+
+	// StartWerewolfVote starts a werewolf vote to choose a victim
+	StartWerewolfVote(gameID entities.GameID, werewolves []*entities.Player, potentialVictims []*entities.Player) (*entities.Vote, error)
+
+	// CastVote records a player's vote
+	CastVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
+
+	// HasEveryoneVoted checks if all eligible voters have voted
+	HasEveryoneVoted(gameID entities.GameID) bool
+
+	// ResolveVote resolves the current vote and returns the result
+	ResolveVote(gameID entities.GameID) (*entities.VoteResult, error)
+
+	// GetVote returns the current vote for a game
+	GetVote(gameID entities.GameID) (*entities.Vote, bool)
+
+	// ClearVote removes the vote for a game
+	ClearVote(gameID entities.GameID)
+}
