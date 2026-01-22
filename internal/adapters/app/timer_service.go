@@ -124,12 +124,20 @@ func (s *TimerService) startTimer(gameID entities.GameID, phase entities.GamePha
 	go s.runTimer(ctx, gameID, timer)
 }
 
-// runTimer runs the timer and broadcasts tick events every second
+// meaningfulIntervals defines which remaining seconds should trigger a broadcast
+// This reduces WebSocket traffic while still giving players useful countdown info
+var meaningfulIntervals = map[int]bool{
+	120: true, 60: true, 30: true, 15: true, 10: true,
+	5: true, 4: true, 3: true, 2: true, 1: true,
+}
+
+// runTimer runs the timer and broadcasts tick events at meaningful intervals
 func (s *TimerService) runTimer(ctx context.Context, gameID entities.GameID, timer *GameTimer) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	durationSecs := int(timer.duration.Seconds())
+	lastBroadcast := -1 // Track last broadcast to avoid duplicates
 
 	for {
 		select {
@@ -149,9 +157,12 @@ func (s *TimerService) runTimer(ctx context.Context, gameID entities.GameID, tim
 				return
 			}
 
-			// Broadcast tick event
+			// Only broadcast at meaningful intervals to reduce WebSocket traffic
 			remainingSecs := int(remaining.Seconds())
-			s.broadcastTimerEvent(gameID, events.NewTimerTickEvent(timer.phase, timer.roleType, durationSecs, remainingSecs))
+			if meaningfulIntervals[remainingSecs] && remainingSecs != lastBroadcast {
+				lastBroadcast = remainingSecs
+				s.broadcastTimerEvent(gameID, events.NewTimerTickEvent(timer.phase, timer.roleType, durationSecs, remainingSecs))
+			}
 		}
 	}
 }
