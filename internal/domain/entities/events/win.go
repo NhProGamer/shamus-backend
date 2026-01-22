@@ -5,15 +5,17 @@ import "shamus-backend/internal/domain/entities"
 const EventTypeWin entities.EventType = "win"
 
 type WinEventData struct {
-	Winners []entities.PlayerID `json:"winners"`
+	WinningClan entities.Clan       `json:"winningClan"`
+	Winners     []entities.PlayerID `json:"winners"`
 }
 
-func NewWinEvent(winners []entities.PlayerID) entities.Event[WinEventData] {
+func NewWinEvent(winningClan entities.Clan, winners []entities.PlayerID) entities.Event[WinEventData] {
 	return entities.Event[WinEventData]{
 		Channel: entities.EventChannelGameEvent,
 		Type:    EventTypeWin,
 		Data: WinEventData{
-			Winners: winners,
+			WinningClan: winningClan,
+			Winners:     winners,
 		},
 	}
 }

@@ -134,15 +134,14 @@ type VoteService interface {
 }
 
 // NightService manages the night phase actions
+// Note: This interface uses strings for phase names for flexibility.
+// The implementation uses the NightPhase type internally.
 type NightService interface {
 	// StartNight initializes a new night phase
 	StartNight(gameID entities.GameID, players []*entities.Player)
 
-	// GetCurrentPhase returns the current night phase
+	// GetCurrentPhase returns the current night phase as string
 	GetCurrentPhase(gameID entities.GameID) string
-
-	// ShouldSkipPhase checks if a phase should be skipped
-	ShouldSkipPhase(gameID entities.GameID, phase string) bool
 
 	// RecordSeerAction records the seer's vision
 	RecordSeerAction(gameID entities.GameID, targetID entities.PlayerID, revealedRole entities.RoleType)
@@ -153,9 +152,6 @@ type NightService interface {
 	// RecordWitchAction records the witch's actions
 	RecordWitchAction(gameID entities.GameID, healTargetID, poisonTargetID *entities.PlayerID)
 
-	// AdvancePhase moves to the next night phase
-	AdvancePhase(gameID entities.GameID) string
-
 	// GetPendingDeaths returns the list of players who will die at dawn
 	GetPendingDeaths(gameID entities.GameID) []entities.PlayerID
 
@@ -164,7 +160,4 @@ type NightService interface {
 
 	// ClearNight removes the night state for a game
 	ClearNight(gameID entities.GameID)
-
-	// SendTurnEvent sends a turn event to the appropriate players
-	SendTurnEvent(gameID entities.GameID, phase string, players []*entities.Player)
 }

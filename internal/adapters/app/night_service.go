@@ -139,15 +139,15 @@ func (s *NightService) GetNightState(gameID entities.GameID) (*NightState, bool)
 }
 
 // GetCurrentPhase returns the current night phase
-func (s *NightService) GetCurrentPhase(gameID entities.GameID) NightPhase {
+func (s *NightService) GetCurrentPhase(gameID entities.GameID) string {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
 	state, exists := s.nightStates[gameID]
 	if !exists {
-		return NightPhaseEnd
+		return string(NightPhaseEnd)
 	}
-	return state.CurrentPhase
+	return string(state.CurrentPhase)
 }
 
 // ShouldSkipPhase checks if a phase should be skipped (no alive players with that role)
@@ -168,6 +168,36 @@ func (s *NightService) ShouldSkipPhase(gameID entities.GameID, phase NightPhase)
 	default:
 		return false
 	}
+}
+
+// AdvancePhase moves to the next night phase
+// Returns the new phase
+func (s *NightService) AdvancePhase(gameID entities.GameID) NightPhase {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	state, exists := s.nightStates[gameID]
+	if !exists {
+		return NightPhaseEnd
+	}
+
+	// Find current phase index
+	currentIdx := -1
+	for i, phase := range NightPhaseOrder {
+		if phase == state.CurrentPhase {
+			currentIdx = i
+			break
+		}
+	}
+
+	// Move to next phase
+	if currentIdx >= len(NightPhaseOrder)-1 {
+		state.CurrentPhase = NightPhaseEnd
+	} else {
+		state.CurrentPhase = NightPhaseOrder[currentIdx+1]
+	}
+
+	return state.CurrentPhase
 }
 
 // RecordSeerAction records the seer's vision
@@ -238,36 +268,6 @@ func (s *NightService) RecordWitchAction(gameID entities.GameID, healTargetID, p
 	if poisonTargetID != nil {
 		state.PendingDeaths = append(state.PendingDeaths, *poisonTargetID)
 	}
-}
-
-// AdvancePhase moves to the next night phase
-// Returns the new phase
-func (s *NightService) AdvancePhase(gameID entities.GameID) NightPhase {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	state, exists := s.nightStates[gameID]
-	if !exists {
-		return NightPhaseEnd
-	}
-
-	// Find current phase index
-	currentIdx := -1
-	for i, phase := range NightPhaseOrder {
-		if phase == state.CurrentPhase {
-			currentIdx = i
-			break
-		}
-	}
-
-	// Move to next phase
-	if currentIdx >= len(NightPhaseOrder)-1 {
-		state.CurrentPhase = NightPhaseEnd
-	} else {
-		state.CurrentPhase = NightPhaseOrder[currentIdx+1]
-	}
-
-	return state.CurrentPhase
 }
 
 // GetPendingDeaths returns the list of players who will die at dawn
