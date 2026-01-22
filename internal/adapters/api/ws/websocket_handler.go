@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"shamus-backend/internal/adapters/app"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	"shamus-backend/internal/domain/ports"
@@ -61,6 +62,75 @@ func (h *WebSocketHandler) IsPlayerConnected(playerID entities.PlayerID) bool {
 	defer h.lock.RUnlock()
 	_, exists := h.playerSessions[playerID]
 	return exists
+}
+
+// errorToCode maps application errors to structured error codes
+func errorToCode(err error) events.ErrorCode {
+	switch {
+	case errors.Is(err, app.ErrWrongPhase):
+		return events.ErrorCodeWrongPhase
+	case errors.Is(err, app.ErrNotYourTurn):
+		return events.ErrorCodeNotYourTurn
+	case errors.Is(err, app.ErrAlreadyActed):
+		return events.ErrorCodeAlreadyActed
+	case errors.Is(err, app.ErrGameNotActive):
+		return events.ErrorCodeGameNotActive
+	case errors.Is(err, app.ErrPlayerDead):
+		return events.ErrorCodePlayerDead
+	case errors.Is(err, app.ErrWrongRole):
+		return events.ErrorCodeWrongRole
+	case errors.Is(err, app.ErrInvalidTarget):
+		return events.ErrorCodeInvalidTarget
+	case errors.Is(err, app.ErrTargetDead):
+		return events.ErrorCodeTargetDead
+	case errors.Is(err, app.ErrCannotTargetSelf):
+		return events.ErrorCodeCannotTargetSelf
+	case errors.Is(err, app.ErrAbilityUsed):
+		return events.ErrorCodeAbilityUsed
+	case errors.Is(err, app.ErrCanOnlyHealVictim):
+		return events.ErrorCodeCanOnlyHealVictim
+	case errors.Is(err, app.ErrVoteNotFound):
+		return events.ErrorCodeVoteNotFound
+	case errors.Is(err, app.ErrVoteNotActive):
+		return events.ErrorCodeVoteNotActive
+	case errors.Is(err, app.ErrInvalidVoter):
+		return events.ErrorCodeInvalidVoter
+	default:
+		return events.ErrorCodeUnknown
+	}
+}
+
+// sendError sends a structured error event to the session
+func sendError(s *melody.Session, err error, action string) {
+	code := errorToCode(err)
+	event := events.NewErrorEvent(code, err.Error(), action)
+	payload, marshalErr := json.Marshal(event)
+	if marshalErr != nil {
+		s.Write([]byte(err.Error()))
+		return
+	}
+	s.Write(payload)
+}
+
+// sendErrorMessage sends a structured error event with a custom message
+func sendErrorMessage(s *melody.Session, code events.ErrorCode, message string, action string) {
+	event := events.NewErrorEvent(code, message, action)
+	payload, err := json.Marshal(event)
+	if err != nil {
+		s.Write([]byte(message))
+		return
+	}
+	s.Write(payload)
+}
+
+// sendAck sends an acknowledgement event to the session
+func sendAck(s *melody.Session, action string, success bool, message string) {
+	event := events.NewAckEvent(action, success, message)
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	s.Write(payload)
 }
 
 // HandleWS handles GET /ws/:gameID requests
@@ -199,7 +269,7 @@ func (h *WebSocketHandler) setupEvents() {
 		userInfo := userInfoRaw.(oidc.UserInfo)
 		var event entities.RawEvent
 		if err := json.Unmarshal(msg, &event); err != nil {
-			s.Write([]byte("Invalid JSON"))
+			sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid JSON", "")
 			return
 		}
 
@@ -224,51 +294,51 @@ func (h *WebSocketHandler) setupEvents() {
 				var message events.ChatMessageEventData
 				if err := json.Unmarshal(event.Data, &message); err != nil {
 					log.Printf("Failed to unmarshal chat message: %v", err)
-					s.Write([]byte("Invalid message format"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid message format", "chat_message")
 					return
 				}
 
 				// Validate chat channel
 				if !events.IsValidChatChannel(string(message.Channel)) {
-					s.Write([]byte("Invalid chat channel"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid chat channel", "chat_message")
 					return
 				}
 
 				// Validate message content
 				if len(message.Message) == 0 {
-					s.Write([]byte("Message cannot be empty"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Message cannot be empty", "chat_message")
 					return
 				}
 				const maxMessageLength = 500
 				if len(message.Message) > maxMessageLength {
-					s.Write([]byte("Message is too long"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Message is too long", "chat_message")
 					return
 				}
 
 				// Get game state for phase info
 				game, err := h.gameService.GetGame(gameID)
 				if err != nil {
-					s.Write([]byte("Game not found"))
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Game not found", "chat_message")
 					return
 				}
 
 				// Get sender player info
 				sender, err := h.playerService.GetPlayer(playerID)
 				if err != nil {
-					s.Write([]byte("Player not found"))
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Player not found", "chat_message")
 					return
 				}
 
 				// Check if sender can send to this channel
 				if !h.chatService.CanSendToChannel(sender, message.Channel, game.Phase) {
-					s.Write([]byte("You cannot send messages to this channel"))
+					sendErrorMessage(s, events.ErrorCodeWrongPhase, "You cannot send messages to this channel", "chat_message")
 					return
 				}
 
 				// Get all players for recipient filtering
 				allPlayers, err := h.playerService.GetGamePlayers(gameID)
 				if err != nil {
-					s.Write([]byte("Failed to get players"))
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Failed to get players", "chat_message")
 					return
 				}
 
@@ -284,7 +354,7 @@ func (h *WebSocketHandler) setupEvents() {
 				reforgedEvent := events.NewChatMessageEvent(playerID, nickname, message.Message, message.Channel)
 				reforgedMsg, err := json.Marshal(reforgedEvent)
 				if err != nil {
-					s.Write([]byte("Error processing message"))
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Error processing message", "chat_message")
 					return
 				}
 
@@ -295,7 +365,7 @@ func (h *WebSocketHandler) setupEvents() {
 				// Host wants to start the game
 				game, players, err := h.gameService.StartGame(gameID, playerID)
 				if err != nil {
-					s.Write([]byte(err.Error()))
+					sendError(s, err, "start_game")
 					return
 				}
 
@@ -332,40 +402,41 @@ func (h *WebSocketHandler) setupEvents() {
 			case events.EventTypeVillageVote:
 				// Player wants to vote during village phase
 				if h.gameEngine == nil {
-					s.Write([]byte("Game engine not available"))
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Game engine not available", "village_vote")
 					return
 				}
 
 				var voteData events.VillageVoteEventData
 				if err := json.Unmarshal(event.Data, &voteData); err != nil {
 					log.Printf("Failed to unmarshal village vote: %v", err)
-					s.Write([]byte("Invalid vote format"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid vote format", "village_vote")
 					return
 				}
 
 				if err := h.gameEngine.HandleVillageVote(gameID, playerID, voteData.TargetID); err != nil {
-					s.Write([]byte(err.Error()))
+					sendError(s, err, "village_vote")
 					return
 				}
 
+				sendAck(s, "village_vote", true, "")
 				log.Printf("Player %s voted for %v in game %s", playerID, voteData.TargetID, gameID)
 
 			case events.EventTypeSeerAction:
 				// Seer wants to see a player's role
 				if h.gameEngine == nil {
-					s.Write([]byte("Game engine not available"))
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Game engine not available", "seer_action")
 					return
 				}
 
 				var seerData events.SeerActionEventData
 				if err := json.Unmarshal(event.Data, &seerData); err != nil {
 					log.Printf("Failed to unmarshal seer action: %v", err)
-					s.Write([]byte("Invalid action format"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid action format", "seer_action")
 					return
 				}
 
 				if err := h.gameEngine.HandleSeerAction(gameID, playerID, seerData.TargetID); err != nil {
-					s.Write([]byte(err.Error()))
+					sendError(s, err, "seer_action")
 					return
 				}
 
@@ -374,43 +445,45 @@ func (h *WebSocketHandler) setupEvents() {
 			case events.EventTypeWerewolfVote:
 				// Werewolf wants to vote for a victim
 				if h.gameEngine == nil {
-					s.Write([]byte("Game engine not available"))
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Game engine not available", "werewolf_vote")
 					return
 				}
 
 				var wolfData events.WerewolfVoteEventData
 				if err := json.Unmarshal(event.Data, &wolfData); err != nil {
 					log.Printf("Failed to unmarshal werewolf vote: %v", err)
-					s.Write([]byte("Invalid vote format"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid vote format", "werewolf_vote")
 					return
 				}
 
 				if err := h.gameEngine.HandleWerewolfVote(gameID, playerID, wolfData.TargetID); err != nil {
-					s.Write([]byte(err.Error()))
+					sendError(s, err, "werewolf_vote")
 					return
 				}
 
+				sendAck(s, "werewolf_vote", true, "")
 				log.Printf("Werewolf %s voted for %v in game %s", playerID, wolfData.TargetID, gameID)
 
 			case events.EventTypeWitchAction:
 				// Witch wants to heal or poison
 				if h.gameEngine == nil {
-					s.Write([]byte("Game engine not available"))
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Game engine not available", "witch_action")
 					return
 				}
 
 				var witchData events.WitchActionEventData
 				if err := json.Unmarshal(event.Data, &witchData); err != nil {
 					log.Printf("Failed to unmarshal witch action: %v", err)
-					s.Write([]byte("Invalid action format"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid action format", "witch_action")
 					return
 				}
 
 				if err := h.gameEngine.HandleWitchAction(gameID, playerID, witchData.HealTargetID, witchData.PoisonTargetID); err != nil {
-					s.Write([]byte(err.Error()))
+					sendError(s, err, "witch_action")
 					return
 				}
 
+				sendAck(s, "witch_action", true, "")
 				log.Printf("Witch %s acted (heal: %v, poison: %v) in game %s", playerID, witchData.HealTargetID, witchData.PoisonTargetID, gameID)
 			}
 
@@ -420,7 +493,7 @@ func (h *WebSocketHandler) setupEvents() {
 				var settingsData events.GameSettingsEventData
 				if err := json.Unmarshal(event.Data, &settingsData); err != nil {
 					log.Printf("Failed to unmarshal settings: %v", err)
-					s.Write([]byte("Invalid settings format"))
+					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid settings format", "game_settings")
 					return
 				}
 
@@ -432,7 +505,7 @@ func (h *WebSocketHandler) setupEvents() {
 				// Call service to update settings (validates host + game state + roles)
 				updatedGame, err := h.gameService.UpdateSettings(gameID, playerID, newSettings)
 				if err != nil {
-					s.Write([]byte(err.Error()))
+					sendError(s, err, "game_settings")
 					return
 				}
 
