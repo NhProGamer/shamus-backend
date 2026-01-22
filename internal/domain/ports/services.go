@@ -3,6 +3,7 @@ package ports
 import (
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	"time"
 )
 
 // GameService defines the game business logic operations
@@ -88,4 +89,22 @@ type ChatService interface {
 		allPlayers []*entities.Player,
 		gamePhase entities.GamePhase,
 	) []*entities.Player
+}
+
+// TimerService manages phase and role timers for games
+type TimerService interface {
+	// StartPhaseTimer starts a timer for a game phase (day or vote)
+	StartPhaseTimer(gameID entities.GameID, phase entities.GamePhase)
+
+	// StartRoleTimer starts a timer for a specific role during night phase
+	StartRoleTimer(gameID entities.GameID, roleType entities.RoleType)
+
+	// CancelTimer cancels the current timer for a game
+	CancelTimer(gameID entities.GameID)
+
+	// SkipTimer skips the current timer (when all players have acted)
+	SkipTimer(gameID entities.GameID)
+
+	// GetRemainingTime returns the remaining time for a game's timer
+	GetRemainingTime(gameID entities.GameID) time.Duration
 }
