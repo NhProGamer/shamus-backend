@@ -303,8 +303,10 @@ func (e *GameEngine) TransitionToNight(gameID entities.GameID) error {
 func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 	result, err := e.voteService.ResolveVote(gameID)
 	if err != nil {
+		e.voteService.ClearVote(gameID) // Clean up even on error
 		return err
 	}
+	defer e.voteService.ClearVote(gameID) // Ensure cleanup after processing
 
 	players, err := e.playerRepo.GetPlayersByGame(gameID)
 	if err != nil {
@@ -326,9 +328,6 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 			}
 		}
 	}
-
-	// Clear the vote
-	e.voteService.ClearVote(gameID)
 
 	// Refresh players after kill
 	players, _ = e.playerRepo.GetPlayersByGame(gameID)
@@ -396,6 +395,12 @@ func (e *GameEngine) CheckWinCondition(players []*entities.Player) *WinResult {
 func (e *GameEngine) EndGame(gameID entities.GameID, game *entities.Game, result *WinResult) error {
 	// Cancel any running timers
 	e.timerService.CancelTimer(gameID)
+
+	// Clean up night state to prevent memory leak
+	e.nightService.ClearNight(gameID)
+
+	// Clean up any pending vote to prevent memory leak
+	e.voteService.ClearVote(gameID)
 
 	// Update game state
 	game.Status = entities.GameStatusEnded
