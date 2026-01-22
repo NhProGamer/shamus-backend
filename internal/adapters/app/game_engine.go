@@ -320,8 +320,12 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 				p.Kill()
 				e.playerRepo.SavePlayer(p)
 
-				// Broadcast death event
-				deathEvent := events.NewDeathEvent(nil, p.ID)
+				// Broadcast death event with role reveal
+				var role entities.RoleType
+				if p.Role != nil {
+					role = p.Role.GetType()
+				}
+				deathEvent := events.NewDeathEvent(p.ID, role)
 				payload, _ := json.Marshal(deathEvent)
 				e.broadcaster.BroadcastToGame(gameID, payload)
 				break
