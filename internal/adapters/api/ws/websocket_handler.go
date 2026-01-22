@@ -555,15 +555,15 @@ func (h *WebSocketHandler) sendPersonalizedGameStateToAll(gid entities.GameID, g
 		return
 	}
 
-	h.lock.RLock()
-	defer h.lock.RUnlock()
+	// Phase 1: Build all payloads WITHOUT holding the lock
+	// This is the expensive operation (visibility calculation + JSON marshaling)
+	type playerPayload struct {
+		playerID entities.PlayerID
+		payload  []byte
+	}
+	payloads := make([]playerPayload, 0, len(players))
 
 	for _, player := range players {
-		sess, ok := h.playerSessions[player.ID]
-		if !ok {
-			continue // Player is disconnected
-		}
-
 		// Build personalized player details for this viewer
 		playersDetails := h.visibilityService.BuildPlayersDetailsForPlayer(
 			player, players, game.Phase,
@@ -584,7 +584,33 @@ func (h *WebSocketHandler) sendPersonalizedGameStateToAll(gid entities.GameID, g
 			log.Printf("Failed to marshal game state for player %s: %v", player.ID, err)
 			continue
 		}
-		sess.Write(payload)
+
+		payloads = append(payloads, playerPayload{
+			playerID: player.ID,
+			payload:  payload,
+		})
+	}
+
+	// Phase 2: Copy session references while holding the lock briefly
+	h.lock.RLock()
+	sessionsToSend := make([]struct {
+		sess    *melody.Session
+		payload []byte
+	}, 0, len(payloads))
+
+	for _, pp := range payloads {
+		if sess, ok := h.playerSessions[pp.playerID]; ok {
+			sessionsToSend = append(sessionsToSend, struct {
+				sess    *melody.Session
+				payload []byte
+			}{sess: sess, payload: pp.payload})
+		}
+	}
+	h.lock.RUnlock()
+
+	// Phase 3: Send all messages WITHOUT holding the lock
+	for _, item := range sessionsToSend {
+		item.sess.Write(item.payload)
 	}
 }
 
