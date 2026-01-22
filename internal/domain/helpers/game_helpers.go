@@ -26,6 +26,10 @@ func IsWerewolf(p *entities.Player) bool {
 }
 
 // IsLover checks if a player has the lovers clan
+// TODO: Implement Lovers system - this helper is ready but needs:
+// - Cupid role that assigns ClanLovers to two players on first night
+// - Death cascade: when one lover dies, the other dies too
+// - Win condition: if only lovers survive, they win regardless of their original clans
 func IsLover(p *entities.Player) bool {
 	return IsPlayerInClan(p, entities.ClanLovers)
 }
