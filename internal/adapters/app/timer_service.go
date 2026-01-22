@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	"shamus-backend/internal/domain/ports"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,21 +47,16 @@ type GameTimer struct {
 	handled   atomic.Bool // Atomic flag to prevent double handling
 }
 
-// Broadcaster is an interface for sending events to games
-type Broadcaster interface {
-	BroadcastToGame(gameID entities.GameID, payload []byte) error
-}
-
 // TimerService manages phase and role timers for games
 type TimerService struct {
 	timers      map[entities.GameID]*GameTimer
-	broadcaster Broadcaster
+	broadcaster ports.Broadcaster
 	onExpiry    TimerCallback
 	lock        sync.Mutex
 }
 
 // NewTimerService creates a new TimerService
-func NewTimerService(broadcaster Broadcaster) *TimerService {
+func NewTimerService(broadcaster ports.Broadcaster) *TimerService {
 	return &TimerService{
 		timers:      make(map[entities.GameID]*GameTimer),
 		broadcaster: broadcaster,

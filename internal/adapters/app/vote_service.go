@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	"shamus-backend/internal/domain/ports"
 	"sync"
 
 	"github.com/google/uuid"
@@ -12,13 +13,13 @@ import (
 // VoteService manages voting sessions for games
 type VoteService struct {
 	votes        map[entities.GameID]*entities.Vote
-	broadcaster  Broadcaster
-	playerSender PlayerSender
+	broadcaster  ports.Broadcaster
+	playerSender ports.PlayerSender
 	lock         sync.RWMutex
 }
 
 // NewVoteService creates a new VoteService
-func NewVoteService(broadcaster Broadcaster, playerSender PlayerSender) *VoteService {
+func NewVoteService(broadcaster ports.Broadcaster, playerSender ports.PlayerSender) *VoteService {
 	return &VoteService{
 		votes:        make(map[entities.GameID]*entities.Vote),
 		broadcaster:  broadcaster,

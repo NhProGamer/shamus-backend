@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	"shamus-backend/internal/domain/ports"
 	"sync"
 )
 
@@ -54,22 +55,16 @@ type NightState struct {
 	WitchHasActed   bool
 }
 
-// PlayerSender is an interface for sending events to specific players
-type PlayerSender interface {
-	SendToPlayer(playerID entities.PlayerID, payload []byte) error
-	BroadcastToGame(gameID entities.GameID, payload []byte) error
-}
-
 // NightService manages the night phase actions
 type NightService struct {
 	nightStates  map[entities.GameID]*NightState
-	playerSender PlayerSender
+	playerSender ports.PlayerSender
 	voteService  *VoteService
 	lock         sync.RWMutex
 }
 
 // NewNightService creates a new NightService
-func NewNightService(playerSender PlayerSender, voteService *VoteService) *NightService {
+func NewNightService(playerSender ports.PlayerSender, voteService *VoteService) *NightService {
 	return &NightService{
 		nightStates:  make(map[entities.GameID]*NightState),
 		playerSender: playerSender,

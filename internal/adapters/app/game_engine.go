@@ -22,8 +22,8 @@ type GameEngine struct {
 	timerService *TimerService
 	voteService  *VoteService
 	nightService *NightService
-	broadcaster  Broadcaster
-	playerSender PlayerSender
+	broadcaster  ports.Broadcaster
+	playerSender ports.PlayerSender
 }
 
 // NewGameEngine creates a new GameEngine
@@ -33,8 +33,8 @@ func NewGameEngine(
 	timerService *TimerService,
 	voteService *VoteService,
 	nightService *NightService,
-	broadcaster Broadcaster,
-	playerSender PlayerSender,
+	broadcaster ports.Broadcaster,
+	playerSender ports.PlayerSender,
 ) *GameEngine {
 	engine := &GameEngine{
 		gameRepo:     gameRepo,
