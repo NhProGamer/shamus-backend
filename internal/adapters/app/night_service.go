@@ -8,23 +8,6 @@ import (
 	"sync"
 )
 
-// NightPhase represents the current phase of the night
-type NightPhase string
-
-const (
-	NightPhaseSeer     NightPhase = "seer"
-	NightPhaseWerewolf NightPhase = "werewolf"
-	NightPhaseWitch    NightPhase = "witch"
-	NightPhaseEnd      NightPhase = "end"
-)
-
-// NightPhaseOrder defines the order of night phases (by role priority)
-var NightPhaseOrder = []NightPhase{
-	NightPhaseSeer,     // Priority 10
-	NightPhaseWerewolf, // Priority 9
-	NightPhaseWitch,    // Priority 8
-}
-
 // SeerAction represents the seer's action for the night
 type SeerAction struct {
 	TargetID entities.PlayerID
@@ -40,7 +23,7 @@ type WitchAction struct {
 // NightState holds the state of a night phase for a game
 type NightState struct {
 	GameID          entities.GameID
-	CurrentPhase    NightPhase
+	CurrentPhase    entities.NightPhase
 	SeerAction      *SeerAction
 	WerewolfVictim  *entities.PlayerID // Result of werewolf vote
 	WitchAction     *WitchAction
@@ -112,7 +95,7 @@ func (s *NightService) StartNight(gameID entities.GameID, players []*entities.Pl
 
 	state := &NightState{
 		GameID:          gameID,
-		CurrentPhase:    NightPhaseSeer, // Start with seer
+		CurrentPhase:    entities.NightPhaseSeer, // Start with seer
 		HasSeer:         hasSeer,
 		HasWerewolves:   hasWerewolves,
 		HasWitch:        hasWitch,
@@ -145,13 +128,13 @@ func (s *NightService) GetCurrentPhase(gameID entities.GameID) string {
 
 	state, exists := s.nightStates[gameID]
 	if !exists {
-		return string(NightPhaseEnd)
+		return string(entities.NightPhaseEnd)
 	}
 	return string(state.CurrentPhase)
 }
 
 // ShouldSkipPhase checks if a phase should be skipped (no alive players with that role)
-func (s *NightService) ShouldSkipPhase(gameID entities.GameID, phase NightPhase) bool {
+func (s *NightService) ShouldSkipPhase(gameID entities.GameID, phase entities.NightPhase) bool {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -161,11 +144,11 @@ func (s *NightService) ShouldSkipPhase(gameID entities.GameID, phase NightPhase)
 	}
 
 	switch phase {
-	case NightPhaseSeer:
+	case entities.NightPhaseSeer:
 		return !state.HasSeer
-	case NightPhaseWerewolf:
+	case entities.NightPhaseWerewolf:
 		return !state.HasWerewolves
-	case NightPhaseWitch:
+	case entities.NightPhaseWitch:
 		return !state.HasWitch
 	default:
 		return false
@@ -174,18 +157,18 @@ func (s *NightService) ShouldSkipPhase(gameID entities.GameID, phase NightPhase)
 
 // AdvancePhase moves to the next night phase
 // Returns the new phase
-func (s *NightService) AdvancePhase(gameID entities.GameID) NightPhase {
+func (s *NightService) AdvancePhase(gameID entities.GameID) entities.NightPhase {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	state, exists := s.nightStates[gameID]
 	if !exists {
-		return NightPhaseEnd
+		return entities.NightPhaseEnd
 	}
 
 	// Find current phase index
 	currentIdx := -1
-	for i, phase := range NightPhaseOrder {
+	for i, phase := range entities.NightPhaseOrder {
 		if phase == state.CurrentPhase {
 			currentIdx = i
 			break
@@ -193,10 +176,10 @@ func (s *NightService) AdvancePhase(gameID entities.GameID) NightPhase {
 	}
 
 	// Move to next phase
-	if currentIdx >= len(NightPhaseOrder)-1 {
-		state.CurrentPhase = NightPhaseEnd
+	if currentIdx >= len(entities.NightPhaseOrder)-1 {
+		state.CurrentPhase = entities.NightPhaseEnd
 	} else {
-		state.CurrentPhase = NightPhaseOrder[currentIdx+1]
+		state.CurrentPhase = entities.NightPhaseOrder[currentIdx+1]
 	}
 
 	return state.CurrentPhase
@@ -320,7 +303,7 @@ func (s *NightService) ClearNight(gameID entities.GameID) {
 }
 
 // SendTurnEvent sends a turn event to the appropriate players
-func (s *NightService) SendTurnEvent(gameID entities.GameID, phase NightPhase, players []*entities.Player) {
+func (s *NightService) SendTurnEvent(gameID entities.GameID, phase entities.NightPhase, players []*entities.Player) {
 	if s.playerSender == nil {
 		return
 	}
@@ -339,7 +322,7 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase NightPhase, p
 	s.lock.RUnlock()
 
 	switch phase {
-	case NightPhaseSeer:
+	case entities.NightPhaseSeer:
 		// Send to seer only
 		for _, p := range players {
 			if p.IsAlive && p.Role != nil && p.Role.GetType() == entities.RoleSeer {
@@ -350,7 +333,7 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase NightPhase, p
 			}
 		}
 
-	case NightPhaseWerewolf:
+	case entities.NightPhaseWerewolf:
 		// Send to all werewolves
 		event := events.NewTurnEvent(entities.RoleWerewolf)
 		payload, _ := json.Marshal(event)
@@ -360,7 +343,7 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase NightPhase, p
 			}
 		}
 
-	case NightPhaseWitch:
+	case entities.NightPhaseWitch:
 		// Send to witch with victim info
 		for _, p := range players {
 			if p.IsAlive && p.Role != nil && p.Role.GetType() == entities.RoleWitch {
@@ -405,7 +388,7 @@ func (s *NightService) CanSeerAct(gameID entities.GameID) bool {
 		return false
 	}
 
-	return state.CurrentPhase == NightPhaseSeer && !state.SeerHasActed
+	return state.CurrentPhase == entities.NightPhaseSeer && !state.SeerHasActed
 }
 
 // CanWerewolvesVote checks if werewolves can vote
@@ -418,7 +401,7 @@ func (s *NightService) CanWerewolvesVote(gameID entities.GameID) bool {
 		return false
 	}
 
-	return state.CurrentPhase == NightPhaseWerewolf && !state.WerewolvesVoted
+	return state.CurrentPhase == entities.NightPhaseWerewolf && !state.WerewolvesVoted
 }
 
 // CanWitchAct checks if the witch can act
@@ -431,7 +414,7 @@ func (s *NightService) CanWitchAct(gameID entities.GameID) bool {
 		return false
 	}
 
-	return state.CurrentPhase == NightPhaseWitch && !state.WitchHasActed
+	return state.CurrentPhase == entities.NightPhaseWitch && !state.WitchHasActed
 }
 
 // GetWitchAbilities returns whether the witch can heal and poison

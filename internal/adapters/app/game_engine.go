@@ -135,7 +135,7 @@ func (e *GameEngine) startNextNightPhase(gameID entities.GameID, players []*enti
 	for e.nightService.ShouldSkipPhase(gameID, currentPhase) {
 		newPhase := e.nightService.AdvancePhase(gameID)
 		currentPhase = newPhase
-		if currentPhase == NightPhaseEnd {
+		if currentPhase == entities.NightPhaseEnd {
 			e.TransitionToDay(gameID)
 			return
 		}
@@ -146,15 +146,15 @@ func (e *GameEngine) startNextNightPhase(gameID entities.GameID, players []*enti
 
 	// Start the appropriate timer
 	switch currentPhase {
-	case NightPhaseSeer:
+	case entities.NightPhaseSeer:
 		e.timerService.StartRoleTimer(gameID, entities.RoleSeer)
-	case NightPhaseWerewolf:
+	case entities.NightPhaseWerewolf:
 		// Start werewolf vote
 		werewolves := GetPlayersWithRole(players, entities.RoleWerewolf)
 		victims := GetNonWerewolfPlayers(players)
 		e.voteService.StartWerewolfVote(gameID, werewolves, victims)
 		e.timerService.StartRoleTimer(gameID, entities.RoleWerewolf)
-	case NightPhaseWitch:
+	case entities.NightPhaseWitch:
 		e.timerService.StartRoleTimer(gameID, entities.RoleWitch)
 	}
 }
@@ -163,7 +163,7 @@ func (e *GameEngine) startNextNightPhase(gameID entities.GameID, players []*enti
 func (e *GameEngine) advanceNightPhase(gameID entities.GameID, state *NightState) {
 	newPhase := e.nightService.AdvancePhase(gameID)
 
-	if NightPhase(newPhase) == NightPhaseEnd || e.nightService.IsNightComplete(gameID) {
+	if newPhase == entities.NightPhaseEnd || e.nightService.IsNightComplete(gameID) {
 		e.TransitionToDay(gameID)
 		return
 	}
