@@ -132,3 +132,39 @@ type VoteService interface {
 	// ClearVote removes the vote for a game
 	ClearVote(gameID entities.GameID)
 }
+
+// NightService manages the night phase actions
+type NightService interface {
+	// StartNight initializes a new night phase
+	StartNight(gameID entities.GameID, players []*entities.Player)
+
+	// GetCurrentPhase returns the current night phase
+	GetCurrentPhase(gameID entities.GameID) string
+
+	// ShouldSkipPhase checks if a phase should be skipped
+	ShouldSkipPhase(gameID entities.GameID, phase string) bool
+
+	// RecordSeerAction records the seer's vision
+	RecordSeerAction(gameID entities.GameID, targetID entities.PlayerID, revealedRole entities.RoleType)
+
+	// RecordWerewolfVictim records the werewolf vote result
+	RecordWerewolfVictim(gameID entities.GameID, victimID *entities.PlayerID)
+
+	// RecordWitchAction records the witch's actions
+	RecordWitchAction(gameID entities.GameID, healTargetID, poisonTargetID *entities.PlayerID)
+
+	// AdvancePhase moves to the next night phase
+	AdvancePhase(gameID entities.GameID) string
+
+	// GetPendingDeaths returns the list of players who will die at dawn
+	GetPendingDeaths(gameID entities.GameID) []entities.PlayerID
+
+	// IsNightComplete checks if all night actions are done
+	IsNightComplete(gameID entities.GameID) bool
+
+	// ClearNight removes the night state for a game
+	ClearNight(gameID entities.GameID)
+
+	// SendTurnEvent sends a turn event to the appropriate players
+	SendTurnEvent(gameID entities.GameID, phase string, players []*entities.Player)
+}
