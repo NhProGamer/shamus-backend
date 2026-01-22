@@ -284,6 +284,37 @@ func (h *WebSocketHandler) setupEvents() {
 
 				// Send to recipients only
 				h.sendToPlayers(recipients, reforgedMsg)
+
+			case events.EventTypeStartGame:
+				// Host wants to start the game
+				game, players, err := h.gameService.StartGame(gameID, playerID)
+				if err != nil {
+					s.Write([]byte(err.Error()))
+					return
+				}
+
+				// Send personalized role reveal to each player
+				for _, player := range players {
+					if player.Role == nil {
+						continue
+					}
+					roleEvent := events.NewRoleAttributionEvent(player.Role.GetType())
+					rolePayload, err := json.Marshal(roleEvent)
+					if err != nil {
+						continue
+					}
+					h.SendToPlayer(player.ID, rolePayload)
+				}
+
+				// Broadcast night event to all players
+				nightEvent := events.NewNightEvent()
+				nightPayload, _ := json.Marshal(nightEvent)
+				h.broadcastToRoom(gameID, nightPayload)
+
+				// Send personalized game state to all players
+				h.sendPersonalizedGameStateToAll(gameID, game)
+
+				log.Printf("Game %s started by host %s", gameID, playerID)
 			}
 
 		case entities.EventChannelSettings:

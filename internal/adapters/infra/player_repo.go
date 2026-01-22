@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"shamus-backend/internal/domain/entities"
+	"shamus-backend/internal/domain/entities/factories"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 	"time"
@@ -61,6 +62,12 @@ func (r *RedisPlayerRepo) GetPlayer(id entities.PlayerID) (*entities.Player, err
 	if err != nil {
 		return nil, err
 	}
+
+	// Reconstruct Role from RoleType
+	if player.RoleType != nil {
+		player.Role = factories.GetNewRole(*player.RoleType)
+	}
+
 	return &player, nil
 }
 
@@ -103,6 +110,10 @@ func (r *RedisPlayerRepo) GetPlayersByGame(gameID entities.GameID) ([]*entities.
 		var player entities.Player
 		if err := json.Unmarshal([]byte(val.(string)), &player); err != nil {
 			continue // Skip invalid data
+		}
+		// Reconstruct Role from RoleType
+		if player.RoleType != nil {
+			player.Role = factories.GetNewRole(*player.RoleType)
 		}
 		players = append(players, &player)
 	}

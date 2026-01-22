@@ -4,17 +4,22 @@ import (
 	"errors"
 	"shamus-backend/internal/domain/entities"
 	apperrors "shamus-backend/internal/domain/errors"
+	"shamus-backend/internal/domain/helpers"
 	"shamus-backend/internal/domain/ports"
 
 	"github.com/google/uuid"
 )
 
 type GameService struct {
-	repo ports.GameRepository
+	gameRepo   ports.GameRepository
+	playerRepo ports.PlayerRepository
 }
 
-func NewGameService(repo ports.GameRepository) *GameService {
-	return &GameService{repo: repo}
+func NewGameService(gameRepo ports.GameRepository, playerRepo ports.PlayerRepository) *GameService {
+	return &GameService{
+		gameRepo:   gameRepo,
+		playerRepo: playerRepo,
+	}
 }
 
 // CreateNewGame creates a new game with the given host
@@ -38,7 +43,7 @@ func (s *GameService) CreateNewGame(hostID entities.PlayerID) (*entities.Game, e
 		},
 	}
 
-	if err := s.repo.SaveGame(newGame); err != nil {
+	if err := s.gameRepo.SaveGame(newGame); err != nil {
 		return nil, err
 	}
 
@@ -47,7 +52,7 @@ func (s *GameService) CreateNewGame(hostID entities.PlayerID) (*entities.Game, e
 
 // JoinGame adds a player to an existing game
 func (s *GameService) JoinGame(gameID entities.GameID, playerID entities.PlayerID) (*entities.Game, error) {
-	game, err := s.repo.GetGame(gameID)
+	game, err := s.gameRepo.GetGame(gameID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +70,7 @@ func (s *GameService) JoinGame(gameID entities.GameID, playerID entities.PlayerI
 
 	game.Players = append(game.Players, playerID)
 
-	if err := s.repo.SaveGame(game); err != nil {
+	if err := s.gameRepo.SaveGame(game); err != nil {
 		return nil, err
 	}
 
@@ -74,13 +79,13 @@ func (s *GameService) JoinGame(gameID entities.GameID, playerID entities.PlayerI
 
 // GetGame retrieves a game by ID
 func (s *GameService) GetGame(gameID entities.GameID) (*entities.Game, error) {
-	return s.repo.GetGame(gameID)
+	return s.gameRepo.GetGame(gameID)
 }
 
 // UpdateSettings updates game settings (roles configuration)
 // Only the host can update settings, and only when game is in waiting state
 func (s *GameService) UpdateSettings(gameID entities.GameID, playerID entities.PlayerID, settings entities.GameSettings) (*entities.Game, error) {
-	game, err := s.repo.GetGame(gameID)
+	game, err := s.gameRepo.GetGame(gameID)
 	if err != nil {
 		return nil, apperrors.ErrGameNotFound
 	}
@@ -121,9 +126,62 @@ func (s *GameService) UpdateSettings(gameID entities.GameID, playerID entities.P
 	// Update settings
 	game.Settings = settings
 
-	if err := s.repo.SaveGame(game); err != nil {
+	if err := s.gameRepo.SaveGame(game); err != nil {
 		return nil, err
 	}
 
 	return game, nil
+}
+
+// StartGame starts a game - assigns roles to players and transitions to night phase
+// Only the host can start the game, and only when game is in waiting state
+func (s *GameService) StartGame(gameID entities.GameID, playerID entities.PlayerID) (*entities.Game, []*entities.Player, error) {
+	game, err := s.gameRepo.GetGame(gameID)
+	if err != nil {
+		return nil, nil, apperrors.ErrGameNotFound
+	}
+
+	// Only host can start the game
+	if game.HostID != playerID {
+		return nil, nil, apperrors.ErrNotHost
+	}
+
+	// Game must be in waiting state
+	if game.Status != entities.GameStatusWaiting {
+		return nil, nil, apperrors.ErrGameNotWaiting
+	}
+
+	// Validate game can start (player count, role count, etc.)
+	if err := game.CanStart(); err != nil {
+		return nil, nil, err
+	}
+
+	// Get all players
+	players, err := s.playerRepo.GetPlayersByGame(gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Assign roles to players
+	if err := helpers.AssignRoles(players, game.Settings); err != nil {
+		return nil, nil, err
+	}
+
+	// Save all players with their assigned roles
+	for _, player := range players {
+		if err := s.playerRepo.SavePlayer(player); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// Update game state
+	game.Status = entities.GameStatusActive
+	game.Phase = entities.PhaseNight
+	game.Day = 1
+
+	if err := s.gameRepo.SaveGame(game); err != nil {
+		return nil, nil, err
+	}
+
+	return game, players, nil
 }

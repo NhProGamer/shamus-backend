@@ -13,6 +13,7 @@ type Player struct {
 	ID              PlayerID        `json:"id"`
 	Username        string          `json:"username"`
 	Role            Role            `json:"-"`
+	RoleType        *RoleType       `json:"roleType,omitempty"` // For serialization
 	IsAlive         bool            `json:"isAlive"`
 	VotedFor        *PlayerID       `json:"votedFor,omitempty"`
 	ConnectionState ConnectionState `json:"connectionState"`
@@ -34,6 +35,15 @@ func NewPlayer(id PlayerID, username string, gameID *GameID) *Player {
 // AssignRole assigns a role to the player
 func (p *Player) AssignRole(r Role) {
 	p.Role = r
+	if r != nil {
+		roleType := r.GetType()
+		p.RoleType = &roleType
+	}
+}
+
+// GetRoleType returns the role type (for serialization)
+func (p *Player) GetRoleType() *RoleType {
+	return p.RoleType
 }
 
 // Kill marks the player as dead

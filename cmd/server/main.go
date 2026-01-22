@@ -65,7 +65,7 @@ func main() {
 	gameRepo := infra.NewRedisGameRepo(rdb)
 	playerRepo := infra.NewRedisPlayerRepo(rdb)
 
-	gameService := app.NewGameService(gameRepo)
+	gameService := app.NewGameService(gameRepo, playerRepo)
 	visibilityService := app.NewVisibilityService()
 	chatService := app.NewChatService()
 

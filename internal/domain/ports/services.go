@@ -19,6 +19,10 @@ type GameService interface {
 	// UpdateSettings updates game settings (roles configuration)
 	// Only the host can update settings, and only when game is in waiting state
 	UpdateSettings(gameID entities.GameID, playerID entities.PlayerID, settings entities.GameSettings) (*entities.Game, error)
+
+	// StartGame starts a game - assigns roles and transitions to night phase
+	// Only the host can start the game, and only when game is in waiting state
+	StartGame(gameID entities.GameID, playerID entities.PlayerID) (*entities.Game, []*entities.Player, error)
 }
 
 // PlayerService defines player management operations
