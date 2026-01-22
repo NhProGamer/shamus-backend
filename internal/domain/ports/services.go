@@ -161,3 +161,21 @@ type NightService interface {
 	// ClearNight removes the night state for a game
 	ClearNight(gameID entities.GameID)
 }
+
+// GameEngine orchestrates game flow and phase transitions
+type GameEngine interface {
+	// StartGameFlow starts the game flow after StartGame (begins first night)
+	StartGameFlow(gameID entities.GameID) error
+
+	// HandleSeerAction processes the seer's night action
+	HandleSeerAction(gameID entities.GameID, seerID, targetID entities.PlayerID) error
+
+	// HandleWerewolfVote processes a werewolf's vote during night
+	HandleWerewolfVote(gameID entities.GameID, werewolfID entities.PlayerID, targetID *entities.PlayerID) error
+
+	// HandleWitchAction processes the witch's night action
+	HandleWitchAction(gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error
+
+	// HandleVillageVote processes a village vote during day
+	HandleVillageVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
+}

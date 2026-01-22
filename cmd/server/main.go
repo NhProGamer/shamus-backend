@@ -78,6 +78,25 @@ func main() {
 	// Inject PlayerService into WebSocketHandler (completes the wiring)
 	wsHandler.SetPlayerService(playerService)
 
+	// Create game engine services (wsHandler implements Broadcaster and PlayerSender interfaces)
+	timerService := app.NewTimerService(wsHandler)
+	voteService := app.NewVoteService(wsHandler)
+	nightService := app.NewNightService(wsHandler, voteService)
+
+	// Create GameEngine and inject into WebSocketHandler
+	gameEngine := app.NewGameEngine(
+		gameRepo,
+		playerRepo,
+		timerService,
+		voteService,
+		nightService,
+		wsHandler,
+		wsHandler,
+	)
+	wsHandler.SetGameEngine(gameEngine)
+
+	log.Println("Game engine services initialized")
+
 	// Initialize routes
 	routes.InitRoutes(r, &controllers.AppContext{
 		Config:           &cfg,

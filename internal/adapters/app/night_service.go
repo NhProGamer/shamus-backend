@@ -324,7 +324,16 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase NightPhase, p
 	}
 
 	s.lock.RLock()
-	state := s.nightStates[gameID]
+	state, exists := s.nightStates[gameID]
+	if !exists {
+		s.lock.RUnlock()
+		return
+	}
+
+	// Copy values we need before releasing lock
+	werewolfVictim := state.WerewolfVictim
+	canHeal := state.WitchCanHeal
+	canPoison := state.WitchCanPoison
 	s.lock.RUnlock()
 
 	switch phase {
@@ -353,12 +362,7 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase NightPhase, p
 		// Send to witch with victim info
 		for _, p := range players {
 			if p.IsAlive && p.Role != nil && p.Role.GetType() == entities.RoleWitch {
-				var canHeal, canPoison bool
-				if state != nil {
-					canHeal = state.WitchCanHeal
-					canPoison = state.WitchCanPoison
-				}
-				event := events.NewWitchTurnEvent(state.WerewolfVictim, canHeal, canPoison)
+				event := events.NewWitchTurnEvent(werewolfVictim, canHeal, canPoison)
 				payload, _ := json.Marshal(event)
 				s.playerSender.SendToPlayer(p.ID, payload)
 				break

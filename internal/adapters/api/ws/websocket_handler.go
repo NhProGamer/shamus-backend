@@ -22,6 +22,7 @@ type WebSocketHandler struct {
 	playerService     ports.PlayerService
 	visibilityService ports.VisibilityService
 	chatService       ports.ChatService
+	gameEngine        ports.GameEngine
 
 	// rooms maps GameID to list of sessions for targeted broadcast
 	rooms map[entities.GameID][]*melody.Session
@@ -47,6 +48,11 @@ func NewWebSocketHandler(m *melody.Melody, gameService ports.GameService, visibi
 func (h *WebSocketHandler) SetPlayerService(ps ports.PlayerService) {
 	h.playerService = ps
 	h.setupEvents()
+}
+
+// SetGameEngine sets the game engine (used to break circular dependency)
+func (h *WebSocketHandler) SetGameEngine(ge ports.GameEngine) {
+	h.gameEngine = ge
 }
 
 // IsPlayerConnected checks if a player has an active WebSocket session
@@ -314,7 +320,98 @@ func (h *WebSocketHandler) setupEvents() {
 				// Send personalized game state to all players
 				h.sendPersonalizedGameStateToAll(gameID, game)
 
+				// Start the game flow (triggers first night phase)
+				if h.gameEngine != nil {
+					if err := h.gameEngine.StartGameFlow(gameID); err != nil {
+						log.Printf("Error starting game flow for game %s: %v", gameID, err)
+					}
+				}
+
 				log.Printf("Game %s started by host %s", gameID, playerID)
+
+			case events.EventTypeVillageVote:
+				// Player wants to vote during village phase
+				if h.gameEngine == nil {
+					s.Write([]byte("Game engine not available"))
+					return
+				}
+
+				var voteData events.VillageVoteEventData
+				if err := json.Unmarshal(event.Data, &voteData); err != nil {
+					log.Printf("Failed to unmarshal village vote: %v", err)
+					s.Write([]byte("Invalid vote format"))
+					return
+				}
+
+				if err := h.gameEngine.HandleVillageVote(gameID, playerID, voteData.TargetID); err != nil {
+					s.Write([]byte(err.Error()))
+					return
+				}
+
+				log.Printf("Player %s voted for %v in game %s", playerID, voteData.TargetID, gameID)
+
+			case events.EventTypeSeerAction:
+				// Seer wants to see a player's role
+				if h.gameEngine == nil {
+					s.Write([]byte("Game engine not available"))
+					return
+				}
+
+				var seerData events.SeerActionEventData
+				if err := json.Unmarshal(event.Data, &seerData); err != nil {
+					log.Printf("Failed to unmarshal seer action: %v", err)
+					s.Write([]byte("Invalid action format"))
+					return
+				}
+
+				if err := h.gameEngine.HandleSeerAction(gameID, playerID, seerData.TargetID); err != nil {
+					s.Write([]byte(err.Error()))
+					return
+				}
+
+				log.Printf("Seer %s looked at %s in game %s", playerID, seerData.TargetID, gameID)
+
+			case events.EventTypeWerewolfVote:
+				// Werewolf wants to vote for a victim
+				if h.gameEngine == nil {
+					s.Write([]byte("Game engine not available"))
+					return
+				}
+
+				var wolfData events.WerewolfVoteEventData
+				if err := json.Unmarshal(event.Data, &wolfData); err != nil {
+					log.Printf("Failed to unmarshal werewolf vote: %v", err)
+					s.Write([]byte("Invalid vote format"))
+					return
+				}
+
+				if err := h.gameEngine.HandleWerewolfVote(gameID, playerID, wolfData.TargetID); err != nil {
+					s.Write([]byte(err.Error()))
+					return
+				}
+
+				log.Printf("Werewolf %s voted for %v in game %s", playerID, wolfData.TargetID, gameID)
+
+			case events.EventTypeWitchAction:
+				// Witch wants to heal or poison
+				if h.gameEngine == nil {
+					s.Write([]byte("Game engine not available"))
+					return
+				}
+
+				var witchData events.WitchActionEventData
+				if err := json.Unmarshal(event.Data, &witchData); err != nil {
+					log.Printf("Failed to unmarshal witch action: %v", err)
+					s.Write([]byte("Invalid action format"))
+					return
+				}
+
+				if err := h.gameEngine.HandleWitchAction(gameID, playerID, witchData.HealTargetID, witchData.PoisonTargetID); err != nil {
+					s.Write([]byte(err.Error()))
+					return
+				}
+
+				log.Printf("Witch %s acted (heal: %v, poison: %v) in game %s", playerID, witchData.HealTargetID, witchData.PoisonTargetID, gameID)
 			}
 
 		case entities.EventChannelSettings:

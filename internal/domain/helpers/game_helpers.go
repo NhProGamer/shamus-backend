@@ -4,7 +4,7 @@ import "shamus-backend/internal/domain/entities"
 
 // IsDayPhase returns true if the phase is during daytime (Day or Vote)
 func IsDayPhase(phase entities.GamePhase) bool {
-	return phase == entities.PhaseDay || phase == entities.PhaseVote
+	return phase == entities.PhaseDay || phase == entities.PhaseVote || phase == entities.PhaseStart
 }
 
 // IsPlayerInClan checks if a player belongs to a specific clan
