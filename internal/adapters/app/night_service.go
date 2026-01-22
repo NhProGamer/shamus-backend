@@ -45,6 +45,7 @@ type NightState struct {
 	WitchAction     *WitchAction
 	PendingDeaths   []entities.PlayerID // Players to kill at dawn
 	HasSeer         bool                // Does the game have a living seer?
+	HasWerewolves   bool                // Does the game have living werewolves?
 	HasWitch        bool                // Does the game have a living witch?
 	WitchCanHeal    bool                // Can the witch still heal?
 	WitchCanPoison  bool                // Can the witch still poison?
@@ -83,6 +84,7 @@ func (s *NightService) StartNight(gameID entities.GameID, players []*entities.Pl
 
 	// Analyze which special roles are alive
 	hasSeer := false
+	hasWerewolves := false
 	hasWitch := false
 	witchCanHeal := false
 	witchCanPoison := false
@@ -94,6 +96,8 @@ func (s *NightService) StartNight(gameID entities.GameID, players []*entities.Pl
 		switch p.Role.GetType() {
 		case entities.RoleSeer:
 			hasSeer = true
+		case entities.RoleWerewolf:
+			hasWerewolves = true
 		case entities.RoleWitch:
 			hasWitch = true
 			// Check witch's remaining abilities
@@ -115,13 +119,14 @@ func (s *NightService) StartNight(gameID entities.GameID, players []*entities.Pl
 		GameID:          gameID,
 		CurrentPhase:    NightPhaseSeer, // Start with seer
 		HasSeer:         hasSeer,
+		HasWerewolves:   hasWerewolves,
 		HasWitch:        hasWitch,
 		WitchCanHeal:    witchCanHeal,
 		WitchCanPoison:  witchCanPoison,
 		PendingDeaths:   []entities.PlayerID{},
-		SeerHasActed:    !hasSeer, // If no seer, mark as acted
-		WerewolvesVoted: false,
-		WitchHasActed:   !hasWitch, // If no witch, mark as acted
+		SeerHasActed:    !hasSeer,       // If no seer, mark as acted
+		WerewolvesVoted: !hasWerewolves, // If no werewolves, mark as voted
+		WitchHasActed:   !hasWitch,      // If no witch, mark as acted
 	}
 
 	s.nightStates[gameID] = state
@@ -163,6 +168,8 @@ func (s *NightService) ShouldSkipPhase(gameID entities.GameID, phase NightPhase)
 	switch phase {
 	case NightPhaseSeer:
 		return !state.HasSeer
+	case NightPhaseWerewolf:
+		return !state.HasWerewolves
 	case NightPhaseWitch:
 		return !state.HasWitch
 	default:
