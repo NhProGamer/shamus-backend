@@ -19,6 +19,9 @@ type PlayerRepository interface {
 	// SavePlayer persists a player to storage
 	SavePlayer(player *entities.Player) error
 
+	// SavePlayers persists multiple players in a single batch operation
+	SavePlayers(players []*entities.Player) error
+
 	// GetPlayer retrieves a player by ID
 	GetPlayer(id entities.PlayerID) (*entities.Player, error)
 

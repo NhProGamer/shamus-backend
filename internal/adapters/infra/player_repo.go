@@ -48,6 +48,27 @@ func (r *RedisPlayerRepo) SavePlayer(player *entities.Player) error {
 	return r.rdb.Set(context.Background(), playerKey(player.ID), data, playerTTL).Err()
 }
 
+// SavePlayers persists multiple players in a single Redis pipeline
+func (r *RedisPlayerRepo) SavePlayers(players []*entities.Player) error {
+	if len(players) == 0 {
+		return nil
+	}
+
+	ctx := context.Background()
+	pipe := r.rdb.Pipeline()
+
+	for _, player := range players {
+		data, err := json.Marshal(player)
+		if err != nil {
+			return err
+		}
+		pipe.Set(ctx, playerKey(player.ID), data, playerTTL)
+	}
+
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 // GetPlayer retrieves a player from Redis by ID
 func (r *RedisPlayerRepo) GetPlayer(id entities.PlayerID) (*entities.Player, error) {
 	val, err := r.rdb.Get(context.Background(), playerKey(id)).Result()

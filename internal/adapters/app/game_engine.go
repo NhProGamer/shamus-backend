@@ -189,30 +189,49 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 		return err
 	}
 
-	// Process night deaths and broadcast individual death events
+	// Process night deaths and collect players to save
 	deaths := e.nightService.GetPendingDeaths(gameID)
+	playersToSave := make([]*entities.Player, 0, len(deaths))
+	deathEvents := make([]struct {
+		playerID entities.PlayerID
+		role     entities.RoleType
+	}, 0, len(deaths))
+
 	for _, deathID := range deaths {
 		for _, p := range players {
 			if p.ID == deathID {
 				p.Kill()
-				if err := e.playerRepo.SavePlayer(p); err != nil {
-					log.Printf("Error saving dead player %s: %v", p.ID, err)
-				}
+				playersToSave = append(playersToSave, p)
 
-				// Broadcast individual death event with role reveal
+				// Collect death event data
 				var role entities.RoleType
 				if p.Role != nil {
 					role = p.Role.GetType()
 				}
-				deathEvent := events.NewDeathEvent(p.ID, role)
-				payload, err := json.Marshal(deathEvent)
-				if err != nil {
-					log.Printf("Error marshaling death event for player %s: %v", p.ID, err)
-				} else {
-					e.broadcaster.BroadcastToGame(gameID, payload)
-				}
+				deathEvents = append(deathEvents, struct {
+					playerID entities.PlayerID
+					role     entities.RoleType
+				}{playerID: p.ID, role: role})
 				break
 			}
+		}
+	}
+
+	// Batch save all dead players in a single Redis pipeline
+	if len(playersToSave) > 0 {
+		if err := e.playerRepo.SavePlayers(playersToSave); err != nil {
+			log.Printf("Error batch saving dead players: %v", err)
+		}
+	}
+
+	// Broadcast individual death events
+	for _, de := range deathEvents {
+		deathEvent := events.NewDeathEvent(de.playerID, de.role)
+		payload, err := json.Marshal(deathEvent)
+		if err != nil {
+			log.Printf("Error marshaling death event for player %s: %v", de.playerID, err)
+		} else {
+			e.broadcaster.BroadcastToGame(gameID, payload)
 		}
 	}
 
