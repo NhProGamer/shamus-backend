@@ -6,6 +6,7 @@ import (
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,6 +43,7 @@ type GameTimer struct {
 	roleType  *entities.RoleType
 	duration  time.Duration
 	startTime time.Time
+	handled   atomic.Bool // Atomic flag to prevent double handling
 }
 
 // Broadcaster is an interface for sending events to games
@@ -132,15 +134,18 @@ func (s *TimerService) runTimer(ctx context.Context, gameID entities.GameID, tim
 	for {
 		select {
 		case <-ctx.Done():
-			// Timer was cancelled (either skipped or game ended)
+			// Timer was cancelled (either skipped, game ended, or new timer started)
+			// The handler that cancelled it is responsible for cleanup
 			return
 		case <-ticker.C:
 			elapsed := time.Since(timer.startTime)
 			remaining := timer.duration - elapsed
 
 			if remaining <= 0 {
-				// Timer expired
-				s.handleExpiry(gameID, timer)
+				// Timer expired naturally - use atomic flag to prevent double handling
+				if timer.handled.CompareAndSwap(false, true) {
+					s.handleExpiry(gameID, timer)
+				}
 				return
 			}
 
@@ -185,6 +190,14 @@ func (s *TimerService) SkipTimer(gameID entities.GameID) {
 		s.lock.Unlock()
 		return
 	}
+
+	// Use atomic flag to prevent double handling with natural expiry
+	if !timer.handled.CompareAndSwap(false, true) {
+		// Already handled by natural expiry, just cleanup
+		s.lock.Unlock()
+		return
+	}
+
 	timer.cancel()
 	delete(s.timers, gameID)
 	s.lock.Unlock()
