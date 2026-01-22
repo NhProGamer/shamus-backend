@@ -2,20 +2,11 @@ package app
 
 import (
 	"encoding/json"
-	"errors"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	"sync"
 
 	"github.com/google/uuid"
-)
-
-var (
-	ErrVoteNotFound      = errors.New("vote not found")
-	ErrVoteAlreadyExists = errors.New("vote already exists for this game")
-	ErrInvalidVoter      = errors.New("player is not eligible to vote")
-	ErrInvalidTarget     = errors.New("target is not eligible")
-	ErrVoteNotActive     = errors.New("vote is not active")
 )
 
 // VoteService manages voting sessions for games

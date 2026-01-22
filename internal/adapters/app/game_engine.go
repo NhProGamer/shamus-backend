@@ -419,29 +419,62 @@ func (e *GameEngine) EndGame(gameID entities.GameID, game *entities.Game, result
 
 // HandleSeerAction processes the seer's night action
 func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID entities.PlayerID) error {
-	players, err := e.playerRepo.GetPlayersByGame(gameID)
+	// 1. Validate game phase
+	game, err := e.gameRepo.GetGame(gameID)
 	if err != nil {
 		return err
 	}
-
-	// Find the target player and their role
-	var targetRole entities.RoleType
-	for _, p := range players {
-		if p.ID == targetID && p.Role != nil {
-			targetRole = p.Role.GetType()
-			break
-		}
+	if game.Status != entities.GameStatusActive {
+		return ErrGameNotActive
+	}
+	if game.Phase != entities.PhaseNight {
+		return ErrWrongPhase
 	}
 
-	// Record the action
+	// 2. Validate it's seer's turn
+	if !e.nightService.CanSeerAct(gameID) {
+		return ErrNotYourTurn
+	}
+
+	// 3. Validate seer player
+	seer, err := e.playerRepo.GetPlayer(seerID)
+	if err != nil {
+		return err
+	}
+	if !seer.IsAlive {
+		return ErrPlayerDead
+	}
+	if seer.Role == nil || seer.Role.GetType() != entities.RoleSeer {
+		return ErrWrongRole
+	}
+
+	// 4. Validate target
+	if targetID == seerID {
+		return ErrCannotTargetSelf
+	}
+	target, err := e.playerRepo.GetPlayer(targetID)
+	if err != nil {
+		return ErrInvalidTarget
+	}
+	if !target.IsAlive {
+		return ErrTargetDead
+	}
+
+	// 5. Get target role
+	var targetRole entities.RoleType
+	if target.Role != nil {
+		targetRole = target.Role.GetType()
+	}
+
+	// 6. Record the action
 	e.nightService.RecordSeerAction(gameID, targetID, targetRole)
 
-	// Send the result to the seer
-	revealEvent := events.NewRoleAttributionEvent(targetRole)
+	// 7. Send the result to the seer
+	revealEvent := events.NewSeerRevealEvent(targetID, targetRole)
 	payload, _ := json.Marshal(revealEvent)
 	e.playerSender.SendToPlayer(seerID, payload)
 
-	// Skip timer and advance to next phase
+	// 8. Skip timer and advance to next phase
 	e.timerService.SkipTimer(gameID)
 
 	return nil
@@ -449,12 +482,56 @@ func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID e
 
 // HandleWerewolfVote processes a werewolf's vote during night
 func (e *GameEngine) HandleWerewolfVote(gameID entities.GameID, werewolfID entities.PlayerID, targetID *entities.PlayerID) error {
-	// Cast the vote
+	// 1. Validate game phase
+	game, err := e.gameRepo.GetGame(gameID)
+	if err != nil {
+		return err
+	}
+	if game.Status != entities.GameStatusActive {
+		return ErrGameNotActive
+	}
+	if game.Phase != entities.PhaseNight {
+		return ErrWrongPhase
+	}
+
+	// 2. Validate it's werewolves' turn
+	if !e.nightService.CanWerewolvesVote(gameID) {
+		return ErrNotYourTurn
+	}
+
+	// 3. Validate werewolf player
+	werewolf, err := e.playerRepo.GetPlayer(werewolfID)
+	if err != nil {
+		return err
+	}
+	if !werewolf.IsAlive {
+		return ErrPlayerDead
+	}
+	if werewolf.Role == nil || werewolf.Role.GetType() != entities.RoleWerewolf {
+		return ErrWrongRole
+	}
+
+	// 4. Validate target (if not abstaining)
+	if targetID != nil {
+		target, err := e.playerRepo.GetPlayer(*targetID)
+		if err != nil {
+			return ErrInvalidTarget
+		}
+		if !target.IsAlive {
+			return ErrTargetDead
+		}
+		// Werewolves can't target other werewolves
+		if target.Role != nil && target.Role.GetType() == entities.RoleWerewolf {
+			return ErrInvalidTarget
+		}
+	}
+
+	// 5. Cast the vote
 	if err := e.voteService.CastVote(gameID, werewolfID, targetID); err != nil {
 		return err
 	}
 
-	// Check if all werewolves have voted
+	// 6. Check if all werewolves have voted
 	if e.voteService.HasEveryoneVoted(gameID) {
 		// Resolve the vote
 		result, err := e.voteService.ResolveVote(gameID)
@@ -475,38 +552,86 @@ func (e *GameEngine) HandleWerewolfVote(gameID entities.GameID, werewolfID entit
 
 // HandleWitchAction processes the witch's night action
 func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error {
-	// Get the witch player to consume abilities
+	// 1. Validate game phase
+	game, err := e.gameRepo.GetGame(gameID)
+	if err != nil {
+		return err
+	}
+	if game.Status != entities.GameStatusActive {
+		return ErrGameNotActive
+	}
+	if game.Phase != entities.PhaseNight {
+		return ErrWrongPhase
+	}
+
+	// 2. Validate it's witch's turn
+	if !e.nightService.CanWitchAct(gameID) {
+		return ErrNotYourTurn
+	}
+
+	// 3. Validate witch player
 	witch, err := e.playerRepo.GetPlayer(witchID)
 	if err != nil {
 		return err
 	}
-
-	if witch.Role == nil {
-		return nil
+	if !witch.IsAlive {
+		return ErrPlayerDead
+	}
+	if witch.Role == nil || witch.Role.GetType() != entities.RoleWitch {
+		return ErrWrongRole
 	}
 
+	// 4. Get witch abilities
+	canHeal, canPoison := e.nightService.GetWitchAbilities(gameID)
+
+	// 5. Validate heal action
+	if healTargetID != nil {
+		if !canHeal {
+			return ErrAbilityUsed
+		}
+		// Can only heal the werewolf victim
+		victim := e.nightService.GetWerewolfVictim(gameID)
+		if victim == nil || *healTargetID != *victim {
+			return ErrCanOnlyHealVictim
+		}
+	}
+
+	// 6. Validate poison action
+	if poisonTargetID != nil {
+		if !canPoison {
+			return ErrAbilityUsed
+		}
+		if *poisonTargetID == witchID {
+			return ErrCannotTargetSelf
+		}
+		target, err := e.playerRepo.GetPlayer(*poisonTargetID)
+		if err != nil {
+			return ErrInvalidTarget
+		}
+		if !target.IsAlive {
+			return ErrTargetDead
+		}
+	}
+
+	// 7. Consume abilities if used
 	abilities := witch.Role.GetAbilities()
-	if abilities == nil {
-		return nil
+	if abilities != nil {
+		for _, ability := range *abilities {
+			if healTargetID != nil && ability.GetName() == "Heal" {
+				ability.Consume()
+			}
+			if poisonTargetID != nil && ability.GetName() == "Poison" {
+				ability.Consume()
+			}
+		}
+		// Save witch with updated abilities
+		e.playerRepo.SavePlayer(witch)
 	}
 
-	// Consume abilities if used
-	for _, ability := range *abilities {
-		if healTargetID != nil && ability.GetName() == "Heal" {
-			ability.Consume()
-		}
-		if poisonTargetID != nil && ability.GetName() == "Poison" {
-			ability.Consume()
-		}
-	}
-
-	// Save witch with updated abilities
-	e.playerRepo.SavePlayer(witch)
-
-	// Record the action
+	// 8. Record the action
 	e.nightService.RecordWitchAction(gameID, healTargetID, poisonTargetID)
 
-	// Skip timer and advance to next phase
+	// 9. Skip timer and advance to next phase
 	e.timerService.SkipTimer(gameID)
 
 	return nil
@@ -514,12 +639,44 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 
 // HandleVillageVote processes a village vote during day
 func (e *GameEngine) HandleVillageVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error {
-	// Cast the vote
+	// 1. Validate game phase
+	game, err := e.gameRepo.GetGame(gameID)
+	if err != nil {
+		return err
+	}
+	if game.Status != entities.GameStatusActive {
+		return ErrGameNotActive
+	}
+	if game.Phase != entities.PhaseVote {
+		return ErrWrongPhase
+	}
+
+	// 2. Validate voter is alive
+	voter, err := e.playerRepo.GetPlayer(voterID)
+	if err != nil {
+		return err
+	}
+	if !voter.IsAlive {
+		return ErrPlayerDead
+	}
+
+	// 3. Validate target (if not abstaining)
+	if targetID != nil {
+		target, err := e.playerRepo.GetPlayer(*targetID)
+		if err != nil {
+			return ErrInvalidTarget
+		}
+		if !target.IsAlive {
+			return ErrTargetDead
+		}
+	}
+
+	// 4. Cast the vote
 	if err := e.voteService.CastVote(gameID, voterID, targetID); err != nil {
 		return err
 	}
 
-	// Check if all players have voted
+	// 5. Check if all players have voted
 	if e.voteService.HasEveryoneVoted(gameID) {
 		// Skip timer and process the result
 		e.timerService.SkipTimer(gameID)

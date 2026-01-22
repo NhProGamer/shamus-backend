@@ -399,3 +399,55 @@ func GetNonWerewolfPlayers(players []*entities.Player) []*entities.Player {
 	}
 	return result
 }
+
+// CanSeerAct checks if the seer can act (correct phase + hasn't acted)
+func (s *NightService) CanSeerAct(gameID entities.GameID) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	state, exists := s.nightStates[gameID]
+	if !exists {
+		return false
+	}
+
+	return state.CurrentPhase == NightPhaseSeer && !state.SeerHasActed
+}
+
+// CanWerewolvesVote checks if werewolves can vote
+func (s *NightService) CanWerewolvesVote(gameID entities.GameID) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	state, exists := s.nightStates[gameID]
+	if !exists {
+		return false
+	}
+
+	return state.CurrentPhase == NightPhaseWerewolf && !state.WerewolvesVoted
+}
+
+// CanWitchAct checks if the witch can act
+func (s *NightService) CanWitchAct(gameID entities.GameID) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	state, exists := s.nightStates[gameID]
+	if !exists {
+		return false
+	}
+
+	return state.CurrentPhase == NightPhaseWitch && !state.WitchHasActed
+}
+
+// GetWitchAbilities returns whether the witch can heal and poison
+func (s *NightService) GetWitchAbilities(gameID entities.GameID) (canHeal, canPoison bool) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	state, exists := s.nightStates[gameID]
+	if !exists {
+		return false, false
+	}
+
+	return state.WitchCanHeal, state.WitchCanPoison
+}
