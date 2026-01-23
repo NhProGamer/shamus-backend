@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"fmt"
 	"math/rand"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/factories"
@@ -16,6 +17,11 @@ func AssignRoles(players []*entities.Player, settings entities.GameSettings) err
 		for i := 0; i < count; i++ {
 			roles = append(roles, roleType)
 		}
+	}
+
+	// Defensive validation: ensure role count matches player count
+	if len(roles) != len(players) {
+		return fmt.Errorf("role count mismatch: %d roles for %d players", len(roles), len(players))
 	}
 
 	// Shuffle roles using Fisher-Yates algorithm
