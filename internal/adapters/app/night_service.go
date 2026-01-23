@@ -217,7 +217,7 @@ func (s *NightService) RecordWerewolfVictim(gameID entities.GameID, victimID *en
 
 	// Add to pending deaths if there's a victim
 	if victimID != nil {
-		state.PendingDeaths = append(state.PendingDeaths, *victimID)
+		addToPendingDeaths(state, *victimID)
 	}
 }
 
@@ -249,9 +249,9 @@ func (s *NightService) RecordWitchAction(gameID entities.GameID, healTargetID, p
 		state.PendingDeaths = newDeaths
 	}
 
-	// If poison was used, add target to pending deaths
+	// If poison was used, add target to pending deaths (with uniqueness check)
 	if poisonTargetID != nil {
-		state.PendingDeaths = append(state.PendingDeaths, *poisonTargetID)
+		addToPendingDeaths(state, *poisonTargetID)
 	}
 }
 
@@ -428,4 +428,16 @@ func (s *NightService) GetWitchAbilities(gameID entities.GameID) (canHeal, canPo
 	}
 
 	return state.WitchCanHeal, state.WitchCanPoison
+}
+
+// addToPendingDeaths adds a player to pending deaths if not already present.
+// This ensures each player appears at most once in the death list.
+// Note: caller must hold the lock.
+func addToPendingDeaths(state *NightState, playerID entities.PlayerID) {
+	for _, id := range state.PendingDeaths {
+		if id == playerID {
+			return // Already in list
+		}
+	}
+	state.PendingDeaths = append(state.PendingDeaths, playerID)
 }
