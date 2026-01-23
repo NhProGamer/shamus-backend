@@ -20,8 +20,9 @@ var (
 	ErrCannotTargetSelf = errors.New("cannot target yourself")
 
 	// Ability errors
-	ErrAbilityUsed       = errors.New("ability already used")
-	ErrCanOnlyHealVictim = errors.New("can only heal the werewolf victim")
+	ErrAbilityUsed        = errors.New("ability already used")
+	ErrCanOnlyHealVictim  = errors.New("can only heal the werewolf victim")
+	ErrTargetAlreadyDying = errors.New("target is already dying tonight")
 
 	// Vote errors
 	ErrVoteNotFound      = errors.New("vote not found")

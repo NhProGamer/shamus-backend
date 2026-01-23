@@ -681,6 +681,11 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 		if !target.IsAlive {
 			return ErrTargetDead
 		}
+		// Cannot poison someone already dying from werewolf attack
+		victim := e.nightService.GetWerewolfVictim(gameID)
+		if victim != nil && *poisonTargetID == *victim {
+			return ErrTargetAlreadyDying
+		}
 	}
 
 	// 7. Consume abilities if used
