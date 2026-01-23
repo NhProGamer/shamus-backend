@@ -21,10 +21,6 @@ func (h *HealAbility) Consume() {
 		*h.consumptions -= 1
 	}
 }
-func (h *HealAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
-	// TODO: implement heal logic
-	return nil
-}
 
 type PoisonAbility struct {
 	consumptions *uint8
@@ -42,10 +38,6 @@ func (p *PoisonAbility) Consume() {
 	if p.consumptions != nil {
 		*p.consumptions -= 1
 	}
-}
-func (p *PoisonAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
-	// TODO: implement poison logic
-	return nil
 }
 
 func NewHealAbility() *HealAbility {

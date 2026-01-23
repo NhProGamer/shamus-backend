@@ -15,7 +15,6 @@ func (k *WerewolfKillAbility) GetDescription() string {
 }
 
 func (k *WerewolfKillAbility) CanUse(game *entities.Game, player *entities.Player) bool {
-	// TODO: add validation logic
 	return true
 }
 
@@ -25,11 +24,6 @@ func (k *WerewolfKillAbility) GetConsumptions() *uint8 {
 
 func (k *WerewolfKillAbility) Consume() {
 	// No consumptions for this ability
-}
-
-func (k *WerewolfKillAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
-	// TODO: implement kill logic
-	return nil
 }
 
 func NewWerewolfKillAbility() entities.Ability {

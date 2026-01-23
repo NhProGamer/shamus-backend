@@ -24,11 +24,6 @@ func (s *SeeAbility) Consume() {
 	// No consumptions for this ability
 }
 
-func (s *SeeAbility) Execute(game *entities.Game, player *entities.Player, target *entities.PlayerID, data map[string]interface{}) error {
-	// TODO: implement see logic
-	return nil
-}
-
 func NewSeeAbility() *SeeAbility {
 	return &SeeAbility{}
 }
