@@ -695,7 +695,10 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 			}
 		}
 		// Save witch with updated abilities
-		e.playerRepo.SavePlayer(witch)
+		if err := e.playerRepo.SavePlayer(witch); err != nil {
+			log.Printf("Error saving witch abilities: %v", err)
+			return err
+		}
 	}
 
 	// 8. Record the action
