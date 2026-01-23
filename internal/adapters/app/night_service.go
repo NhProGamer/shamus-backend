@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"log"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	"shamus-backend/internal/domain/ports"
@@ -327,7 +328,11 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase entities.Nigh
 		for _, p := range players {
 			if p.IsAlive && p.Role != nil && p.Role.GetType() == entities.RoleSeer {
 				event := events.NewTurnEvent(entities.RoleSeer)
-				payload, _ := json.Marshal(event)
+				payload, err := json.Marshal(event)
+				if err != nil {
+					log.Printf("Error marshaling seer turn event: %v", err)
+					return
+				}
 				s.playerSender.SendToPlayer(p.ID, payload)
 				break
 			}
@@ -336,7 +341,11 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase entities.Nigh
 	case entities.NightPhaseWerewolf:
 		// Send to all werewolves
 		event := events.NewTurnEvent(entities.RoleWerewolf)
-		payload, _ := json.Marshal(event)
+		payload, err := json.Marshal(event)
+		if err != nil {
+			log.Printf("Error marshaling werewolf turn event: %v", err)
+			return
+		}
 		for _, p := range players {
 			if p.IsAlive && p.Role != nil && p.Role.GetType() == entities.RoleWerewolf {
 				s.playerSender.SendToPlayer(p.ID, payload)
@@ -348,7 +357,11 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase entities.Nigh
 		for _, p := range players {
 			if p.IsAlive && p.Role != nil && p.Role.GetType() == entities.RoleWitch {
 				event := events.NewWitchTurnEvent(werewolfVictim, canHeal, canPoison)
-				payload, _ := json.Marshal(event)
+				payload, err := json.Marshal(event)
+				if err != nil {
+					log.Printf("Error marshaling witch turn event: %v", err)
+					return
+				}
 				s.playerSender.SendToPlayer(p.ID, payload)
 				break
 			}

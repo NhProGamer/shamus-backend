@@ -332,7 +332,11 @@ func (e *GameEngine) TransitionToNight(gameID entities.GameID) error {
 
 	// Broadcast night event
 	nightEvent := events.NewNightEvent()
-	payload, _ := json.Marshal(nightEvent)
+	payload, err := json.Marshal(nightEvent)
+	if err != nil {
+		log.Printf("Error marshaling night event: %v", err)
+		return err
+	}
 	e.broadcaster.BroadcastToGame(gameID, payload)
 
 	// Initialize night state and start first phase
@@ -480,8 +484,13 @@ func (e *GameEngine) EndGame(gameID entities.GameID, game *entities.Game, result
 
 	// Broadcast win event
 	winEvent := events.NewWinEvent(result.WinningClan, result.Winners)
-	payload, _ := json.Marshal(winEvent)
-	e.broadcaster.BroadcastToGame(gameID, payload)
+	payload, err := json.Marshal(winEvent)
+	if err != nil {
+		log.Printf("Error marshaling win event: %v", err)
+		// Continue anyway - game state is already updated
+	} else {
+		e.broadcaster.BroadcastToGame(gameID, payload)
+	}
 
 	log.Printf("Game %s ended. Winner: %s", gameID, result.WinningClan)
 	return nil
@@ -541,7 +550,11 @@ func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID e
 
 	// 7. Send the result to the seer
 	revealEvent := events.NewSeerRevealEvent(targetID, targetRole)
-	payload, _ := json.Marshal(revealEvent)
+	payload, err := json.Marshal(revealEvent)
+	if err != nil {
+		log.Printf("Error marshaling seer reveal event: %v", err)
+		return err
+	}
 	e.playerSender.SendToPlayer(seerID, payload)
 
 	// 8. Skip timer and advance to next phase
