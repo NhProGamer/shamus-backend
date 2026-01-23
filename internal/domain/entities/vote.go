@@ -77,6 +77,10 @@ func (v *Vote) CastBallot(voterID PlayerID, targetID *PlayerID) bool {
 
 // HasEveryoneVoted checks if all eligible voters have cast their ballot
 func (v *Vote) HasEveryoneVoted() bool {
+	// No eligible voters means voting cannot complete normally
+	if len(v.EligibleVoters) == 0 {
+		return false
+	}
 	return len(v.Ballots) >= len(v.EligibleVoters)
 }
 
