@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"shamus-backend/internal/domain/entities"
@@ -108,7 +109,7 @@ func (e *GameEngine) handleNightRoleTimeout(gameID entities.GameID, roleType ent
 
 // StartGameFlow is called after StartGame to begin the game flow
 func (e *GameEngine) StartGameFlow(gameID entities.GameID) error {
-	players, err := e.playerRepo.GetPlayersByGame(gameID)
+	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -169,7 +170,7 @@ func (e *GameEngine) advanceNightPhase(gameID entities.GameID, state *NightState
 		return
 	}
 
-	players, err := e.playerRepo.GetPlayersByGame(gameID)
+	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
 		log.Printf("Error getting players for game %s: %v", gameID, err)
 		return
@@ -180,12 +181,12 @@ func (e *GameEngine) advanceNightPhase(gameID entities.GameID, state *NightState
 
 // TransitionToDay transitions the game to day phase
 func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
-	game, err := e.gameRepo.GetGame(gameID)
+	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
 
-	players, err := e.playerRepo.GetPlayersByGame(gameID)
+	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -220,7 +221,7 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 
 	// Batch save all dead players in a single Redis pipeline
 	if len(playersToSave) > 0 {
-		if err := e.playerRepo.SavePlayers(playersToSave); err != nil {
+		if err := e.playerRepo.SavePlayers(context.TODO(), playersToSave); err != nil {
 			log.Printf("Error batch saving dead players: %v", err)
 		}
 	}
@@ -241,7 +242,7 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 
 	// Check win condition after deaths
 	// Refresh players to get updated alive status
-	players, err = e.playerRepo.GetPlayersByGame(gameID)
+	players, err = e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
 		log.Printf("Error refreshing players after deaths for game %s: %v", gameID, err)
 		// Continue with stale player data rather than failing
@@ -253,7 +254,7 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 
 	// Update game state
 	game.Phase = entities.PhaseDay
-	if err := e.gameRepo.SaveGame(game); err != nil {
+	if err := e.gameRepo.SaveGame(context.TODO(), game); err != nil {
 		return err
 	}
 
@@ -275,12 +276,12 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 
 // TransitionToVote transitions the game to vote phase
 func (e *GameEngine) TransitionToVote(gameID entities.GameID) error {
-	game, err := e.gameRepo.GetGame(gameID)
+	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
 
-	players, err := e.playerRepo.GetPlayersByGame(gameID)
+	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -301,7 +302,7 @@ func (e *GameEngine) TransitionToVote(gameID entities.GameID) error {
 
 	// Update game state
 	game.Phase = entities.PhaseVote
-	if err := e.gameRepo.SaveGame(game); err != nil {
+	if err := e.gameRepo.SaveGame(context.TODO(), game); err != nil {
 		return err
 	}
 
@@ -314,12 +315,12 @@ func (e *GameEngine) TransitionToVote(gameID entities.GameID) error {
 
 // TransitionToNight transitions the game to night phase
 func (e *GameEngine) TransitionToNight(gameID entities.GameID) error {
-	game, err := e.gameRepo.GetGame(gameID)
+	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
 
-	players, err := e.playerRepo.GetPlayersByGame(gameID)
+	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -327,7 +328,7 @@ func (e *GameEngine) TransitionToNight(gameID entities.GameID) error {
 	// Update game state
 	game.Phase = entities.PhaseNight
 	game.Day++
-	if err := e.gameRepo.SaveGame(game); err != nil {
+	if err := e.gameRepo.SaveGame(context.TODO(), game); err != nil {
 		return err
 	}
 
@@ -357,7 +358,7 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 	}
 	defer e.voteService.ClearVote(gameID) // Ensure cleanup after processing
 
-	players, err := e.playerRepo.GetPlayersByGame(gameID)
+	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -367,7 +368,7 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 		for _, p := range players {
 			if p.ID == *result.Target {
 				p.Kill()
-				if err := e.playerRepo.SavePlayer(p); err != nil {
+				if err := e.playerRepo.SavePlayer(context.TODO(), p); err != nil {
 					log.Printf("Error saving eliminated player %s: %v", p.ID, err)
 				}
 
@@ -389,7 +390,7 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 	}
 
 	// Refresh players after kill
-	players, err = e.playerRepo.GetPlayersByGame(gameID)
+	players, err = e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
 		log.Printf("Error refreshing players after vote for game %s: %v", gameID, err)
 	}
@@ -397,7 +398,7 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 	// Check win condition
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
-		game, err := e.gameRepo.GetGame(gameID)
+		game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 		if err != nil {
 			log.Printf("Error getting game %s for end game: %v", gameID, err)
 			return err
@@ -479,7 +480,7 @@ func (e *GameEngine) EndGame(gameID entities.GameID, game *entities.Game, result
 
 	// Update game state
 	game.Status = entities.GameStatusEnded
-	if err := e.gameRepo.SaveGame(game); err != nil {
+	if err := e.gameRepo.SaveGame(context.TODO(), game); err != nil {
 		return err
 	}
 
@@ -500,7 +501,7 @@ func (e *GameEngine) EndGame(gameID entities.GameID, game *entities.Game, result
 // HandleSeerAction processes the seer's night action
 func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID entities.PlayerID) error {
 	// 1. Validate game phase
-	game, err := e.gameRepo.GetGame(gameID)
+	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -517,7 +518,7 @@ func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID e
 	}
 
 	// 3. Validate seer player
-	seer, err := e.playerRepo.GetPlayer(seerID)
+	seer, err := e.playerRepo.GetPlayer(context.TODO(), seerID)
 	if err != nil {
 		return err
 	}
@@ -532,7 +533,7 @@ func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID e
 	if targetID == seerID {
 		return apperrors.ErrCannotTargetSelf
 	}
-	target, err := e.playerRepo.GetPlayer(targetID)
+	target, err := e.playerRepo.GetPlayer(context.TODO(), targetID)
 	if err != nil {
 		return apperrors.ErrInvalidTarget
 	}
@@ -567,7 +568,7 @@ func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID e
 // HandleWerewolfVote processes a werewolf's vote during night
 func (e *GameEngine) HandleWerewolfVote(gameID entities.GameID, werewolfID entities.PlayerID, targetID *entities.PlayerID) error {
 	// 1. Validate game phase
-	game, err := e.gameRepo.GetGame(gameID)
+	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -584,7 +585,7 @@ func (e *GameEngine) HandleWerewolfVote(gameID entities.GameID, werewolfID entit
 	}
 
 	// 3. Validate werewolf player
-	werewolf, err := e.playerRepo.GetPlayer(werewolfID)
+	werewolf, err := e.playerRepo.GetPlayer(context.TODO(), werewolfID)
 	if err != nil {
 		return err
 	}
@@ -597,7 +598,7 @@ func (e *GameEngine) HandleWerewolfVote(gameID entities.GameID, werewolfID entit
 
 	// 4. Validate target (if not abstaining)
 	if targetID != nil {
-		target, err := e.playerRepo.GetPlayer(*targetID)
+		target, err := e.playerRepo.GetPlayer(context.TODO(), *targetID)
 		if err != nil {
 			return apperrors.ErrInvalidTarget
 		}
@@ -637,7 +638,7 @@ func (e *GameEngine) HandleWerewolfVote(gameID entities.GameID, werewolfID entit
 // HandleWitchAction processes the witch's night action
 func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error {
 	// 1. Validate game phase
-	game, err := e.gameRepo.GetGame(gameID)
+	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -654,7 +655,7 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 	}
 
 	// 3. Validate witch player
-	witch, err := e.playerRepo.GetPlayer(witchID)
+	witch, err := e.playerRepo.GetPlayer(context.TODO(), witchID)
 	if err != nil {
 		return err
 	}
@@ -688,7 +689,7 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 		if *poisonTargetID == witchID {
 			return apperrors.ErrCannotTargetSelf
 		}
-		target, err := e.playerRepo.GetPlayer(*poisonTargetID)
+		target, err := e.playerRepo.GetPlayer(context.TODO(), *poisonTargetID)
 		if err != nil {
 			return apperrors.ErrInvalidTarget
 		}
@@ -714,7 +715,7 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 			}
 		}
 		// Save witch with updated abilities
-		if err := e.playerRepo.SavePlayer(witch); err != nil {
+		if err := e.playerRepo.SavePlayer(context.TODO(), witch); err != nil {
 			log.Printf("Error saving witch abilities: %v", err)
 			return err
 		}
@@ -732,7 +733,7 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 // HandleVillageVote processes a village vote during day
 func (e *GameEngine) HandleVillageVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error {
 	// 1. Validate game phase
-	game, err := e.gameRepo.GetGame(gameID)
+	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 	if err != nil {
 		return err
 	}
@@ -744,7 +745,7 @@ func (e *GameEngine) HandleVillageVote(gameID entities.GameID, voterID entities.
 	}
 
 	// 2. Validate voter is alive
-	voter, err := e.playerRepo.GetPlayer(voterID)
+	voter, err := e.playerRepo.GetPlayer(context.TODO(), voterID)
 	if err != nil {
 		return err
 	}
@@ -758,7 +759,7 @@ func (e *GameEngine) HandleVillageVote(gameID entities.GameID, voterID entities.
 		if *targetID == voterID {
 			return apperrors.ErrCannotTargetSelf
 		}
-		target, err := e.playerRepo.GetPlayer(*targetID)
+		target, err := e.playerRepo.GetPlayer(context.TODO(), *targetID)
 		if err != nil {
 			return apperrors.ErrInvalidTarget
 		}

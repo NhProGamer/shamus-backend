@@ -38,21 +38,20 @@ func gamePlayersKey(gameID entities.GameID) string {
 }
 
 // SavePlayer persists a player to Redis with configurable TTL
-func (r *RedisPlayerRepo) SavePlayer(player *entities.Player) error {
+func (r *RedisPlayerRepo) SavePlayer(ctx context.Context, player *entities.Player) error {
 	data, err := JSON.Marshal(player)
 	if err != nil {
 		return err
 	}
-	return r.rdb.Set(context.Background(), playerKey(player.ID), data, constants.PlayerTTL).Err()
+	return r.rdb.Set(ctx, playerKey(player.ID), data, constants.PlayerTTL).Err()
 }
 
 // SavePlayers persists multiple players in a single Redis pipeline
-func (r *RedisPlayerRepo) SavePlayers(players []*entities.Player) error {
+func (r *RedisPlayerRepo) SavePlayers(ctx context.Context, players []*entities.Player) error {
 	if len(players) == 0 {
 		return nil
 	}
 
-	ctx := context.Background()
 	pipe := r.rdb.Pipeline()
 
 	for _, player := range players {
@@ -68,8 +67,8 @@ func (r *RedisPlayerRepo) SavePlayers(players []*entities.Player) error {
 }
 
 // GetPlayer retrieves a player from Redis by ID
-func (r *RedisPlayerRepo) GetPlayer(id entities.PlayerID) (*entities.Player, error) {
-	val, err := r.rdb.Get(context.Background(), playerKey(id)).Result()
+func (r *RedisPlayerRepo) GetPlayer(ctx context.Context, id entities.PlayerID) (*entities.Player, error) {
+	val, err := r.rdb.Get(ctx, playerKey(id)).Result()
 	if err == redis.Nil {
 		return nil, apperrors.ErrPlayerNotFound
 	} else if err != nil {
@@ -91,14 +90,12 @@ func (r *RedisPlayerRepo) GetPlayer(id entities.PlayerID) (*entities.Player, err
 }
 
 // DeletePlayer removes a player from Redis
-func (r *RedisPlayerRepo) DeletePlayer(id entities.PlayerID) error {
-	return r.rdb.Del(context.Background(), playerKey(id)).Err()
+func (r *RedisPlayerRepo) DeletePlayer(ctx context.Context, id entities.PlayerID) error {
+	return r.rdb.Del(ctx, playerKey(id)).Err()
 }
 
 // GetPlayersByGame retrieves all players in a game using the player set index
-func (r *RedisPlayerRepo) GetPlayersByGame(gameID entities.GameID) ([]*entities.Player, error) {
-	ctx := context.Background()
-
+func (r *RedisPlayerRepo) GetPlayersByGame(ctx context.Context, gameID entities.GameID) ([]*entities.Player, error) {
 	// Get all player IDs from the game's player set
 	playerIDs, err := r.rdb.SMembers(ctx, gamePlayersKey(gameID)).Result()
 	if err != nil {
@@ -141,8 +138,7 @@ func (r *RedisPlayerRepo) GetPlayersByGame(gameID entities.GameID) ([]*entities.
 }
 
 // AddPlayerToGame adds a player ID to the game's player set
-func (r *RedisPlayerRepo) AddPlayerToGame(gameID entities.GameID, playerID entities.PlayerID) error {
-	ctx := context.Background()
+func (r *RedisPlayerRepo) AddPlayerToGame(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID) error {
 	key := gamePlayersKey(gameID)
 
 	// Add to set
@@ -155,13 +151,12 @@ func (r *RedisPlayerRepo) AddPlayerToGame(gameID entities.GameID, playerID entit
 }
 
 // RemovePlayerFromGame removes a player ID from the game's player set
-func (r *RedisPlayerRepo) RemovePlayerFromGame(gameID entities.GameID, playerID entities.PlayerID) error {
-	return r.rdb.SRem(context.Background(), gamePlayersKey(gameID), string(playerID)).Err()
+func (r *RedisPlayerRepo) RemovePlayerFromGame(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID) error {
+	return r.rdb.SRem(ctx, gamePlayersKey(gameID), string(playerID)).Err()
 }
 
 // DeleteGamePlayers removes all players associated with a game (cleanup when game ends)
-func (r *RedisPlayerRepo) DeleteGamePlayers(gameID entities.GameID) error {
-	ctx := context.Background()
+func (r *RedisPlayerRepo) DeleteGamePlayers(ctx context.Context, gameID entities.GameID) error {
 	key := gamePlayersKey(gameID)
 
 	// Get all player IDs first

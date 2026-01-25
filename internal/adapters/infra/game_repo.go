@@ -21,17 +21,17 @@ func NewRedisGameRepo(rdb *redis.Client) ports.GameRepository {
 }
 
 // SaveGame persists a game to Redis with configurable TTL
-func (gm *RedisGameRepo) SaveGame(game *entities.Game) error {
+func (gm *RedisGameRepo) SaveGame(ctx context.Context, game *entities.Game) error {
 	data, err := JSON.Marshal(game)
 	if err != nil {
 		return err
 	}
-	return gm.rdb.Set(context.Background(), "game:"+string(game.ID), data, constants.GameTTL).Err()
+	return gm.rdb.Set(ctx, "game:"+string(game.ID), data, constants.GameTTL).Err()
 }
 
 // GetGame retrieves a game from Redis by ID
-func (gm *RedisGameRepo) GetGame(id entities.GameID) (*entities.Game, error) {
-	val, err := gm.rdb.Get(context.Background(), "game:"+string(id)).Result()
+func (gm *RedisGameRepo) GetGame(ctx context.Context, id entities.GameID) (*entities.Game, error) {
+	val, err := gm.rdb.Get(ctx, "game:"+string(id)).Result()
 	if err == redis.Nil {
 		return nil, apperrors.ErrGameNotFound
 	} else if err != nil {
@@ -47,6 +47,6 @@ func (gm *RedisGameRepo) GetGame(id entities.GameID) (*entities.Game, error) {
 }
 
 // DeleteGame removes a game from Redis
-func (gm *RedisGameRepo) DeleteGame(id entities.GameID) error {
-	return gm.rdb.Del(context.Background(), "game:"+string(id)).Err()
+func (gm *RedisGameRepo) DeleteGame(ctx context.Context, id entities.GameID) error {
+	return gm.rdb.Del(ctx, "game:"+string(id)).Err()
 }
