@@ -1,14 +1,17 @@
 package entities
 
-import "fmt"
+import (
+	"fmt"
+	"shamus-backend/internal/domain/constants"
+)
 
 type GameID string
 type GamePhase string
 type GameStatus string
 
 const (
-	MinPlayers = 4
-	MaxPlayers = 24
+	MinPlayers = constants.MinPlayers
+	MaxPlayers = constants.MaxPlayers
 )
 
 // Role limits (max count per role type)

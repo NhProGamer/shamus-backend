@@ -9,6 +9,7 @@ import (
 	"shamus-backend/internal/adapters/api/ws"
 	"shamus-backend/internal/adapters/app"
 	"shamus-backend/internal/adapters/infra"
+	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/infrastructure/config"
 	"shamus-backend/internal/infrastructure/controllers"
 	"shamus-backend/internal/infrastructure/routes"
@@ -110,8 +111,8 @@ func main() {
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  constants.ServerReadTimeout,
+		WriteTimeout: constants.ServerWriteTimeout,
 	}
 
 	go func() {

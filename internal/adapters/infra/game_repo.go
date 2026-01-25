@@ -2,10 +2,10 @@ package infra
 
 import (
 	"context"
+	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/domain/entities"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -20,13 +20,13 @@ func NewRedisGameRepo(rdb *redis.Client) ports.GameRepository {
 	}
 }
 
-// SaveGame persists a game to Redis with 24h TTL
+// SaveGame persists a game to Redis with configurable TTL
 func (gm *RedisGameRepo) SaveGame(game *entities.Game) error {
 	data, err := JSON.Marshal(game)
 	if err != nil {
 		return err
 	}
-	return gm.rdb.Set(context.Background(), "game:"+string(game.ID), data, 24*time.Hour).Err()
+	return gm.rdb.Set(context.Background(), "game:"+string(game.ID), data, constants.GameTTL).Err()
 }
 
 // GetGame retrieves a game from Redis by ID

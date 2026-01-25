@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
@@ -305,12 +306,11 @@ func (h *WebSocketHandler) setupEvents() {
 				}
 
 				// Validate message content
-				if len(message.Message) == 0 {
+				if len(message.Message) < constants.MinChatMessageLength {
 					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Message cannot be empty", "chat_message")
 					return
 				}
-				const maxMessageLength = 500
-				if len(message.Message) > maxMessageLength {
+				if len(message.Message) > constants.MaxChatMessageLength {
 					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Message is too long", "chat_message")
 					return
 				}

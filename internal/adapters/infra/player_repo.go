@@ -3,11 +3,11 @@ package infra
 import (
 	"context"
 	"fmt"
+	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/factories"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -15,7 +15,6 @@ import (
 const (
 	playerKeyPrefix   = "player:"
 	gamePlayersPrefix = "game:%s:player_ids"
-	playerTTL         = 24 * time.Hour
 )
 
 type RedisPlayerRepo struct {
@@ -38,13 +37,13 @@ func gamePlayersKey(gameID entities.GameID) string {
 	return fmt.Sprintf(gamePlayersPrefix, string(gameID))
 }
 
-// SavePlayer persists a player to Redis with 24h TTL
+// SavePlayer persists a player to Redis with configurable TTL
 func (r *RedisPlayerRepo) SavePlayer(player *entities.Player) error {
 	data, err := JSON.Marshal(player)
 	if err != nil {
 		return err
 	}
-	return r.rdb.Set(context.Background(), playerKey(player.ID), data, playerTTL).Err()
+	return r.rdb.Set(context.Background(), playerKey(player.ID), data, constants.PlayerTTL).Err()
 }
 
 // SavePlayers persists multiple players in a single Redis pipeline
@@ -61,7 +60,7 @@ func (r *RedisPlayerRepo) SavePlayers(players []*entities.Player) error {
 		if err != nil {
 			return err
 		}
-		pipe.Set(ctx, playerKey(player.ID), data, playerTTL)
+		pipe.Set(ctx, playerKey(player.ID), data, constants.PlayerTTL)
 	}
 
 	_, err := pipe.Exec(ctx)
@@ -152,7 +151,7 @@ func (r *RedisPlayerRepo) AddPlayerToGame(gameID entities.GameID, playerID entit
 	}
 
 	// Set TTL on the set (same as player TTL)
-	return r.rdb.Expire(ctx, key, playerTTL).Err()
+	return r.rdb.Expire(ctx, key, constants.PlayerTTL).Err()
 }
 
 // RemovePlayerFromGame removes a player ID from the game's player set

@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
@@ -9,8 +10,6 @@ import (
 	"sync"
 	"time"
 )
-
-const reconnectionTimeout = 2 * time.Minute
 
 // ConnectionChecker is an interface to check if a player has an active WebSocket session
 // This avoids circular dependency with WebSocketHandler
@@ -234,7 +233,7 @@ func (s *PlayerService) startReconnTimer(playerID entities.PlayerID, gameID enti
 		timer.Stop()
 	}
 
-	s.reconnTimers[playerID] = time.AfterFunc(reconnectionTimeout, func() {
+	s.reconnTimers[playerID] = time.AfterFunc(constants.ReconnectionTimeout, func() {
 		s.handleReconnTimeout(playerID, gameID)
 	})
 }
