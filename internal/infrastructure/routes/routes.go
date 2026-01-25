@@ -6,9 +6,15 @@ import (
 	"shamus-backend/internal/infrastructure/middlewares"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
-func InitRoutes(r *gin.Engine, ctx *controllers.AppContext) {
+func InitRoutes(r *gin.Engine, ctx *controllers.AppContext, rdb *redis.Client) {
+	// Health check endpoints (no authentication required)
+	r.GET("/health", controllers.HealthHandler(rdb))
+	r.GET("/ready", controllers.ReadinessHandler(rdb))
+	r.GET("/live", controllers.LivenessHandler())
+
 	// Protected routes (require authentication)
 	protected := r.Group("/app")
 	protected.Use(middlewares.OIDCHandler(ctx))

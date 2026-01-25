@@ -104,7 +104,7 @@ func main() {
 		GameService:      gameService,
 		WebsocketHandler: wsHandler,
 		OIDCProvider:     provider,
-	})
+	}, rdb)
 
 	// Start server with graceful shutdown
 	addr := cfg.Server.Host + ":" + strconv.Itoa(cfg.Server.Port)
