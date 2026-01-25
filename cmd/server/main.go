@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,6 +12,7 @@ import (
 	"shamus-backend/internal/infrastructure/config"
 	"shamus-backend/internal/infrastructure/controllers"
 	"shamus-backend/internal/infrastructure/routes"
+	"shamus-backend/pkg/logger"
 	"strconv"
 	"syscall"
 	"time"
@@ -27,8 +27,15 @@ import (
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		panic("Failed to load config: " + err.Error())
 	}
+
+	// Initialize logger
+	log := logger.New(logger.Config{
+		Level:  cfg.Logger.Level,
+		Pretty: cfg.Logger.Pretty,
+	})
+	log.Info().Msg("Starting Shamus backend server")
 
 	r := gin.Default()
 	m := melody.New()
@@ -46,7 +53,7 @@ func main() {
 	ctx := context.Background()
 	provider, err := oidc.NewProvider(ctx, cfg.OIDC.Issuer)
 	if err != nil {
-		log.Fatalf("Failed to initialize OIDC provider: %v", err)
+		log.Fatal().Msgf("Failed to initialize OIDC provider: %v", err)
 	}
 
 	// Initialize Redis client
@@ -58,9 +65,9 @@ func main() {
 
 	// Verify Redis connection
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+		log.Fatal().Msgf("Failed to connect to Redis: %v", err)
 	}
-	log.Println("Connected to Redis")
+	log.Info().Msg("Connected to Redis")
 
 	// Wire up dependencies
 	gameRepo := infra.NewRedisGameRepo(rdb)
@@ -96,7 +103,7 @@ func main() {
 	)
 	wsHandler.SetGameEngine(gameEngine)
 
-	log.Println("Game engine services initialized")
+	log.Info().Msg("Game engine services initialized")
 
 	// Initialize routes
 	routes.InitRoutes(r, &controllers.AppContext{
@@ -116,9 +123,9 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Starting server on %s", addr)
+		log.Info().Msgf("Starting server on %s", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+			log.Fatal().Msgf("Failed to start server: %v", err)
 		}
 	}()
 
@@ -126,14 +133,14 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	log.Info().Msg("Shutting down server...")
 
 	// Give outstanding requests 5 seconds to complete
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Fatal().Msgf("Server forced to shutdown: %v", err)
 	}
 
-	log.Println("Server exited")
+	log.Info().Msg("Server exited")
 }

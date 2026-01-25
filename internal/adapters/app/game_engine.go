@@ -3,11 +3,11 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
+	"shamus-backend/pkg/logger"
 )
 
 // WinResult represents the result of a win condition check
@@ -58,7 +58,7 @@ func NewGameEngine(
 
 // handleTimerExpiry is called when a timer expires
 func (e *GameEngine) handleTimerExpiry(gameID entities.GameID, phase entities.GamePhase, roleType *entities.RoleType) {
-	log.Printf("Timer expired for game %s, phase %s, role %v", gameID, phase, roleType)
+	logger.Get().Info().Msgf("Timer expired for game %s, phase %s, role %v", gameID, phase, roleType)
 
 	switch phase {
 	case entities.PhaseDay:
@@ -172,7 +172,7 @@ func (e *GameEngine) advanceNightPhase(gameID entities.GameID, state *NightState
 
 	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
-		log.Printf("Error getting players for game %s: %v", gameID, err)
+		logger.Get().Info().Msgf("Error getting players for game %s: %v", gameID, err)
 		return
 	}
 
@@ -222,7 +222,7 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 	// Batch save all dead players in a single Redis pipeline
 	if len(playersToSave) > 0 {
 		if err := e.playerRepo.SavePlayers(context.TODO(), playersToSave); err != nil {
-			log.Printf("Error batch saving dead players: %v", err)
+			logger.Get().Info().Msgf("Error batch saving dead players: %v", err)
 		}
 	}
 
@@ -231,7 +231,7 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 		deathEvent := events.NewDeathEvent(de.playerID, de.role)
 		payload, err := json.Marshal(deathEvent)
 		if err != nil {
-			log.Printf("Error marshaling death event for player %s: %v", de.playerID, err)
+			logger.Get().Info().Msgf("Error marshaling death event for player %s: %v", de.playerID, err)
 		} else {
 			e.broadcaster.BroadcastToGame(gameID, payload)
 		}
@@ -244,7 +244,7 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 	// Refresh players to get updated alive status
 	players, err = e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
-		log.Printf("Error refreshing players after deaths for game %s: %v", gameID, err)
+		logger.Get().Info().Msgf("Error refreshing players after deaths for game %s: %v", gameID, err)
 		// Continue with stale player data rather than failing
 	}
 	winResult := e.CheckWinCondition(players)
@@ -262,7 +262,7 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 	dayEvent := events.NewDayEvent(game.Day)
 	payload, err := json.Marshal(dayEvent)
 	if err != nil {
-		log.Printf("Error marshaling day event for game %s: %v", gameID, err)
+		logger.Get().Info().Msgf("Error marshaling day event for game %s: %v", gameID, err)
 	} else {
 		e.broadcaster.BroadcastToGame(gameID, payload)
 	}
@@ -270,7 +270,7 @@ func (e *GameEngine) TransitionToDay(gameID entities.GameID) error {
 	// Start day timer
 	e.timerService.StartPhaseTimer(gameID, entities.PhaseDay)
 
-	log.Printf("Game %s transitioned to day %d with %d deaths", gameID, game.Day, len(deaths))
+	logger.Get().Info().Msgf("Game %s transitioned to day %d with %d deaths", gameID, game.Day, len(deaths))
 	return nil
 }
 
@@ -309,7 +309,7 @@ func (e *GameEngine) TransitionToVote(gameID entities.GameID) error {
 	// Start vote timer
 	e.timerService.StartPhaseTimer(gameID, entities.PhaseVote)
 
-	log.Printf("Game %s transitioned to vote phase", gameID)
+	logger.Get().Info().Msgf("Game %s transitioned to vote phase", gameID)
 	return nil
 }
 
@@ -336,7 +336,7 @@ func (e *GameEngine) TransitionToNight(gameID entities.GameID) error {
 	nightEvent := events.NewNightEvent()
 	payload, err := json.Marshal(nightEvent)
 	if err != nil {
-		log.Printf("Error marshaling night event: %v", err)
+		logger.Get().Info().Msgf("Error marshaling night event: %v", err)
 		return err
 	}
 	e.broadcaster.BroadcastToGame(gameID, payload)
@@ -345,7 +345,7 @@ func (e *GameEngine) TransitionToNight(gameID entities.GameID) error {
 	e.nightService.StartNight(gameID, players)
 	e.startNextNightPhase(gameID, players)
 
-	log.Printf("Game %s transitioned to night %d", gameID, game.Day)
+	logger.Get().Info().Msgf("Game %s transitioned to night %d", gameID, game.Day)
 	return nil
 }
 
@@ -369,7 +369,7 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 			if p.ID == *result.Target {
 				p.Kill()
 				if err := e.playerRepo.SavePlayer(context.TODO(), p); err != nil {
-					log.Printf("Error saving eliminated player %s: %v", p.ID, err)
+					logger.Get().Info().Msgf("Error saving eliminated player %s: %v", p.ID, err)
 				}
 
 				// Broadcast death event with role reveal
@@ -380,7 +380,7 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 				deathEvent := events.NewDeathEvent(p.ID, role)
 				payload, err := json.Marshal(deathEvent)
 				if err != nil {
-					log.Printf("Error marshaling death event for player %s: %v", p.ID, err)
+					logger.Get().Info().Msgf("Error marshaling death event for player %s: %v", p.ID, err)
 				} else {
 					e.broadcaster.BroadcastToGame(gameID, payload)
 				}
@@ -392,7 +392,7 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 	// Refresh players after kill
 	players, err = e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
 	if err != nil {
-		log.Printf("Error refreshing players after vote for game %s: %v", gameID, err)
+		logger.Get().Info().Msgf("Error refreshing players after vote for game %s: %v", gameID, err)
 	}
 
 	// Check win condition
@@ -400,7 +400,7 @@ func (e *GameEngine) ProcessVoteResult(gameID entities.GameID) error {
 	if winResult.GameEnded {
 		game, err := e.gameRepo.GetGame(context.TODO(), gameID)
 		if err != nil {
-			log.Printf("Error getting game %s for end game: %v", gameID, err)
+			logger.Get().Info().Msgf("Error getting game %s for end game: %v", gameID, err)
 			return err
 		}
 		return e.EndGame(gameID, game, winResult)
@@ -488,13 +488,13 @@ func (e *GameEngine) EndGame(gameID entities.GameID, game *entities.Game, result
 	winEvent := events.NewWinEvent(result.WinningClan, result.Winners)
 	payload, err := json.Marshal(winEvent)
 	if err != nil {
-		log.Printf("Error marshaling win event: %v", err)
+		logger.Get().Info().Msgf("Error marshaling win event: %v", err)
 		// Continue anyway - game state is already updated
 	} else {
 		e.broadcaster.BroadcastToGame(gameID, payload)
 	}
 
-	log.Printf("Game %s ended. Winner: %s", gameID, result.WinningClan)
+	logger.Get().Info().Msgf("Game %s ended. Winner: %s", gameID, result.WinningClan)
 	return nil
 }
 
@@ -554,7 +554,7 @@ func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID e
 	revealEvent := events.NewSeerRevealEvent(targetID, targetRole)
 	payload, err := json.Marshal(revealEvent)
 	if err != nil {
-		log.Printf("Error marshaling seer reveal event: %v", err)
+		logger.Get().Info().Msgf("Error marshaling seer reveal event: %v", err)
 		return err
 	}
 	e.playerSender.SendToPlayer(seerID, payload)
@@ -716,7 +716,7 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 		}
 		// Save witch with updated abilities
 		if err := e.playerRepo.SavePlayer(context.TODO(), witch); err != nil {
-			log.Printf("Error saving witch abilities: %v", err)
+			logger.Get().Info().Msgf("Error saving witch abilities: %v", err)
 			return err
 		}
 	}

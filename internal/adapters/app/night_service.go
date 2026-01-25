@@ -2,7 +2,7 @@ package app
 
 import (
 	"encoding/json"
-	"log"
+	"shamus-backend/pkg/logger"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	"shamus-backend/internal/domain/ports"
@@ -330,7 +330,7 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase entities.Nigh
 				event := events.NewTurnEvent(entities.RoleSeer)
 				payload, err := json.Marshal(event)
 				if err != nil {
-					log.Printf("Error marshaling seer turn event: %v", err)
+					logger.Get().Info().Msgf("Error marshaling seer turn event: %v", err)
 					return
 				}
 				s.playerSender.SendToPlayer(p.ID, payload)
@@ -343,7 +343,7 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase entities.Nigh
 		event := events.NewTurnEvent(entities.RoleWerewolf)
 		payload, err := json.Marshal(event)
 		if err != nil {
-			log.Printf("Error marshaling werewolf turn event: %v", err)
+			logger.Get().Info().Msgf("Error marshaling werewolf turn event: %v", err)
 			return
 		}
 		for _, p := range players {
@@ -359,7 +359,7 @@ func (s *NightService) SendTurnEvent(gameID entities.GameID, phase entities.Nigh
 				event := events.NewWitchTurnEvent(werewolfVictim, canHeal, canPoison)
 				payload, err := json.Marshal(event)
 				if err != nil {
-					log.Printf("Error marshaling witch turn event: %v", err)
+					logger.Get().Info().Msgf("Error marshaling witch turn event: %v", err)
 					return
 				}
 				s.playerSender.SendToPlayer(p.ID, payload)

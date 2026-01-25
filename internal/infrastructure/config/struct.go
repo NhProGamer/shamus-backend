@@ -9,7 +9,13 @@ type Config struct {
 	Server ServerConfig `yaml:"server"`
 	OIDC   OIDCConfig   `yaml:"oidc"`
 	Redis  RedisConfig  `yaml:"redis"`
+	Logger LoggerConfig `yaml:"logger"`
 	Debug  bool         `yaml:"debug"`
+}
+
+type LoggerConfig struct {
+	Level  string `yaml:"level"`  // debug, info, warn, error
+	Pretty bool   `yaml:"pretty"` // Pretty console output
 }
 
 type ServerConfig struct {
@@ -69,6 +75,10 @@ var defaultConfig = Config{
 		ClientID: "your-client-id",
 		Secret:   "your-client-secret",
 		Scopes:   []string{"openid", "profile", "email"},
+	},
+	Logger: LoggerConfig{
+		Level:  "info",
+		Pretty: true,
 	},
 	Debug: false,
 }

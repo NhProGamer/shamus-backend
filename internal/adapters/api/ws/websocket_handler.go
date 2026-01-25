@@ -3,7 +3,7 @@ package ws
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"shamus-backend/pkg/logger"
 	"net/http"
 	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/domain/entities"
@@ -229,7 +229,7 @@ func (h *WebSocketHandler) setupEvents() {
 			h.sendPersonalizedGameStateToAll(gameID, game)
 		}
 
-		log.Printf("Player %s (%s) joined game %s (reconnection: %v)", player.Username, playerID, gameID, isReconnection)
+		logger.Get().Info().Msgf("Player %s (%s) joined game %s (reconnection: %v)", player.Username, playerID, gameID, isReconnection)
 	})
 
 	// Handle disconnection
@@ -249,7 +249,7 @@ func (h *WebSocketHandler) setupEvents() {
 
 		// Call PlayerService for business logic
 		if err := h.playerService.HandleDisconnect(gameID, playerID); err != nil {
-			log.Printf("Error handling disconnect for player %s: %v", playerID, err)
+			logger.Get().Info().Msgf("Error handling disconnect for player %s: %v", playerID, err)
 		}
 
 		// Broadcast disconnection event
@@ -257,7 +257,7 @@ func (h *WebSocketHandler) setupEvents() {
 		disconnPayload, _ := json.Marshal(disconnEvent)
 		h.broadcastToRoom(gameID, disconnPayload)
 
-		log.Printf("Player %s disconnected from game %s", playerID, gameID)
+		logger.Get().Info().Msgf("Player %s disconnected from game %s", playerID, gameID)
 	})
 
 	// Handle messages (Gameplay)
@@ -294,7 +294,7 @@ func (h *WebSocketHandler) setupEvents() {
 			case events.EventTypeChatMessage:
 				var message events.ChatMessageEventData
 				if err := json.Unmarshal(event.Data, &message); err != nil {
-					log.Printf("Failed to unmarshal chat message: %v", err)
+					logger.Get().Info().Msgf("Failed to unmarshal chat message: %v", err)
 					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid message format", "chat_message")
 					return
 				}
@@ -393,11 +393,11 @@ func (h *WebSocketHandler) setupEvents() {
 				// Start the game flow (triggers first night phase)
 				if h.gameEngine != nil {
 					if err := h.gameEngine.StartGameFlow(gameID); err != nil {
-						log.Printf("Error starting game flow for game %s: %v", gameID, err)
+						logger.Get().Info().Msgf("Error starting game flow for game %s: %v", gameID, err)
 					}
 				}
 
-				log.Printf("Game %s started by host %s", gameID, playerID)
+				logger.Get().Info().Msgf("Game %s started by host %s", gameID, playerID)
 
 			case events.EventTypeVillageVote:
 				// Player wants to vote during village phase
@@ -408,7 +408,7 @@ func (h *WebSocketHandler) setupEvents() {
 
 				var voteData events.VillageVoteEventData
 				if err := json.Unmarshal(event.Data, &voteData); err != nil {
-					log.Printf("Failed to unmarshal village vote: %v", err)
+					logger.Get().Info().Msgf("Failed to unmarshal village vote: %v", err)
 					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid vote format", "village_vote")
 					return
 				}
@@ -419,7 +419,7 @@ func (h *WebSocketHandler) setupEvents() {
 				}
 
 				sendAck(s, "village_vote", true, "")
-				log.Printf("Player %s voted for %v in game %s", playerID, voteData.TargetID, gameID)
+				logger.Get().Info().Msgf("Player %s voted for %v in game %s", playerID, voteData.TargetID, gameID)
 
 			case events.EventTypeSeerAction:
 				// Seer wants to see a player's role
@@ -430,7 +430,7 @@ func (h *WebSocketHandler) setupEvents() {
 
 				var seerData events.SeerActionEventData
 				if err := json.Unmarshal(event.Data, &seerData); err != nil {
-					log.Printf("Failed to unmarshal seer action: %v", err)
+					logger.Get().Info().Msgf("Failed to unmarshal seer action: %v", err)
 					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid action format", "seer_action")
 					return
 				}
@@ -440,7 +440,7 @@ func (h *WebSocketHandler) setupEvents() {
 					return
 				}
 
-				log.Printf("Seer %s looked at %s in game %s", playerID, seerData.TargetID, gameID)
+				logger.Get().Info().Msgf("Seer %s looked at %s in game %s", playerID, seerData.TargetID, gameID)
 
 			case events.EventTypeWerewolfVote:
 				// Werewolf wants to vote for a victim
@@ -451,7 +451,7 @@ func (h *WebSocketHandler) setupEvents() {
 
 				var wolfData events.WerewolfVoteEventData
 				if err := json.Unmarshal(event.Data, &wolfData); err != nil {
-					log.Printf("Failed to unmarshal werewolf vote: %v", err)
+					logger.Get().Info().Msgf("Failed to unmarshal werewolf vote: %v", err)
 					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid vote format", "werewolf_vote")
 					return
 				}
@@ -462,7 +462,7 @@ func (h *WebSocketHandler) setupEvents() {
 				}
 
 				sendAck(s, "werewolf_vote", true, "")
-				log.Printf("Werewolf %s voted for %v in game %s", playerID, wolfData.TargetID, gameID)
+				logger.Get().Info().Msgf("Werewolf %s voted for %v in game %s", playerID, wolfData.TargetID, gameID)
 
 			case events.EventTypeWitchAction:
 				// Witch wants to heal or poison
@@ -473,7 +473,7 @@ func (h *WebSocketHandler) setupEvents() {
 
 				var witchData events.WitchActionEventData
 				if err := json.Unmarshal(event.Data, &witchData); err != nil {
-					log.Printf("Failed to unmarshal witch action: %v", err)
+					logger.Get().Info().Msgf("Failed to unmarshal witch action: %v", err)
 					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid action format", "witch_action")
 					return
 				}
@@ -484,7 +484,7 @@ func (h *WebSocketHandler) setupEvents() {
 				}
 
 				sendAck(s, "witch_action", true, "")
-				log.Printf("Witch %s acted (heal: %v, poison: %v) in game %s", playerID, witchData.HealTargetID, witchData.PoisonTargetID, gameID)
+				logger.Get().Info().Msgf("Witch %s acted (heal: %v, poison: %v) in game %s", playerID, witchData.HealTargetID, witchData.PoisonTargetID, gameID)
 			}
 
 		case entities.EventChannelSettings:
@@ -492,7 +492,7 @@ func (h *WebSocketHandler) setupEvents() {
 			case events.EventTypeGameSettings:
 				var settingsData events.GameSettingsEventData
 				if err := json.Unmarshal(event.Data, &settingsData); err != nil {
-					log.Printf("Failed to unmarshal settings: %v", err)
+					logger.Get().Info().Msgf("Failed to unmarshal settings: %v", err)
 					sendErrorMessage(s, events.ErrorCodeInvalidAction, "Invalid settings format", "game_settings")
 					return
 				}
@@ -516,7 +516,7 @@ func (h *WebSocketHandler) setupEvents() {
 				payload, _ := json.Marshal(settingsEvent)
 				h.broadcastToRoom(gameID, payload)
 
-				log.Printf("Host %s updated settings for game %s: %v", playerID, gameID, updatedGame.Settings.Roles)
+				logger.Get().Info().Msgf("Host %s updated settings for game %s: %v", playerID, gameID, updatedGame.Settings.Roles)
 			}
 		}
 	})
@@ -551,7 +551,7 @@ func (h *WebSocketHandler) sendPersonalizedGameStateToAll(gid entities.GameID, g
 	// Get all players with their full data (including roles)
 	players, err := h.playerService.GetGamePlayers(gid)
 	if err != nil {
-		log.Printf("Failed to get players for game %s: %v", gid, err)
+		logger.Get().Info().Msgf("Failed to get players for game %s: %v", gid, err)
 		return
 	}
 
@@ -581,7 +581,7 @@ func (h *WebSocketHandler) sendPersonalizedGameStateToAll(gid entities.GameID, g
 
 		payload, err := json.Marshal(event)
 		if err != nil {
-			log.Printf("Failed to marshal game state for player %s: %v", player.ID, err)
+			logger.Get().Info().Msgf("Failed to marshal game state for player %s: %v", player.ID, err)
 			continue
 		}
 
