@@ -669,6 +669,11 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 	// 4. Get witch abilities
 	canHeal, canPoison := e.nightService.GetWitchAbilities(gameID)
 
+	// 4.5. Validate that witch can only use ONE potion per night
+	if healTargetID != nil && poisonTargetID != nil {
+		return apperrors.ErrCannotUseBothPotions
+	}
+
 	// 5. Validate heal action
 	if healTargetID != nil {
 		if !canHeal {

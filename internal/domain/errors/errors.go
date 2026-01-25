@@ -100,9 +100,10 @@ var (
 
 // Game action errors - Ability errors
 var (
-	ErrAbilityUsed        = New("ABILITY_USED", "ability already used")
-	ErrCanOnlyHealVictim  = New("CAN_ONLY_HEAL_VICTIM", "can only heal the werewolf victim")
-	ErrTargetAlreadyDying = New("TARGET_ALREADY_DYING", "target is already dying tonight")
+	ErrAbilityUsed          = New("ABILITY_USED", "ability already used")
+	ErrCanOnlyHealVictim    = New("CAN_ONLY_HEAL_VICTIM", "can only heal the werewolf victim")
+	ErrTargetAlreadyDying   = New("TARGET_ALREADY_DYING", "target is already dying tonight")
+	ErrCannotUseBothPotions = New("CANNOT_USE_BOTH_POTIONS", "witch can only use one potion per night")
 )
 
 // Vote errors
