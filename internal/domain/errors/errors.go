@@ -76,3 +76,39 @@ var (
 	ErrRoleCountMismatch  = New("ROLE_COUNT_MISMATCH", "number of roles must equal number of players")
 	ErrInvalidComposition = New("INVALID_COMPOSITION", "need at least one villager and one werewolf/rogue")
 )
+
+// Game action errors - Phase/turn errors
+var (
+	ErrNotYourTurn   = New("NOT_YOUR_TURN", "not your turn")
+	ErrWrongPhase    = New("WRONG_PHASE", "wrong game phase")
+	ErrAlreadyActed  = New("ALREADY_ACTED", "you already acted this phase")
+	ErrGameNotActive = New("GAME_NOT_ACTIVE", "game is not active")
+)
+
+// Game action errors - Player state errors
+var (
+	ErrPlayerDead = New("PLAYER_DEAD", "player is dead")
+	ErrWrongRole  = New("WRONG_ROLE", "you don't have this role")
+)
+
+// Game action errors - Target errors
+var (
+	ErrInvalidTarget    = New("INVALID_TARGET", "invalid target")
+	ErrTargetDead       = New("TARGET_DEAD", "target is dead")
+	ErrCannotTargetSelf = New("CANNOT_TARGET_SELF", "cannot target yourself")
+)
+
+// Game action errors - Ability errors
+var (
+	ErrAbilityUsed        = New("ABILITY_USED", "ability already used")
+	ErrCanOnlyHealVictim  = New("CAN_ONLY_HEAL_VICTIM", "can only heal the werewolf victim")
+	ErrTargetAlreadyDying = New("TARGET_ALREADY_DYING", "target is already dying tonight")
+)
+
+// Vote errors
+var (
+	ErrVoteNotFound      = New("VOTE_NOT_FOUND", "vote not found")
+	ErrVoteAlreadyExists = New("VOTE_ALREADY_EXISTS", "vote already exists for this game")
+	ErrInvalidVoter      = New("INVALID_VOTER", "player is not eligible to vote")
+	ErrVoteNotActive     = New("VOTE_NOT_ACTIVE", "vote is not active")
+)

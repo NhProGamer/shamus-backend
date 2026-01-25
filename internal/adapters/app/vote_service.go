@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 	"sync"
 
@@ -34,7 +35,7 @@ func (s *VoteService) StartVillageVote(gameID entities.GameID, alivePlayers []*e
 
 	// Check if vote already exists
 	if _, exists := s.votes[gameID]; exists {
-		return nil, ErrVoteAlreadyExists
+		return nil, apperrors.ErrVoteAlreadyExists
 	}
 
 	// Build eligible voters and targets (all alive players)
@@ -69,7 +70,7 @@ func (s *VoteService) StartWerewolfVote(gameID entities.GameID, werewolves []*en
 
 	// Check if vote already exists
 	if _, exists := s.votes[gameID]; exists {
-		return nil, ErrVoteAlreadyExists
+		return nil, apperrors.ErrVoteAlreadyExists
 	}
 
 	// Werewolves are the voters
@@ -110,15 +111,15 @@ func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID
 
 	vote, exists := s.votes[gameID]
 	if !exists {
-		return ErrVoteNotFound
+		return apperrors.ErrVoteNotFound
 	}
 
 	if vote.Status != entities.VoteStatusActive {
-		return ErrVoteNotActive
+		return apperrors.ErrVoteNotActive
 	}
 
 	if !vote.CastBallot(voterID, targetID) {
-		return ErrInvalidVoter
+		return apperrors.ErrInvalidVoter
 	}
 
 	// Broadcast player vote event
@@ -155,7 +156,7 @@ func (s *VoteService) ResolveVote(gameID entities.GameID) (*entities.VoteResult,
 
 	vote, exists := s.votes[gameID]
 	if !exists {
-		return nil, ErrVoteNotFound
+		return nil, apperrors.ErrVoteNotFound
 	}
 
 	result := vote.Resolve()

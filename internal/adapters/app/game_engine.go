@@ -5,6 +5,7 @@ import (
 	"log"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 )
 
@@ -504,15 +505,15 @@ func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID e
 		return err
 	}
 	if game.Status != entities.GameStatusActive {
-		return ErrGameNotActive
+		return apperrors.ErrGameNotActive
 	}
 	if game.Phase != entities.PhaseNight {
-		return ErrWrongPhase
+		return apperrors.ErrWrongPhase
 	}
 
 	// 2. Validate it's seer's turn
 	if !e.nightService.CanSeerAct(gameID) {
-		return ErrNotYourTurn
+		return apperrors.ErrNotYourTurn
 	}
 
 	// 3. Validate seer player
@@ -521,22 +522,22 @@ func (e *GameEngine) HandleSeerAction(gameID entities.GameID, seerID, targetID e
 		return err
 	}
 	if !seer.IsAlive {
-		return ErrPlayerDead
+		return apperrors.ErrPlayerDead
 	}
 	if seer.Role == nil || seer.Role.GetType() != entities.RoleSeer {
-		return ErrWrongRole
+		return apperrors.ErrWrongRole
 	}
 
 	// 4. Validate target
 	if targetID == seerID {
-		return ErrCannotTargetSelf
+		return apperrors.ErrCannotTargetSelf
 	}
 	target, err := e.playerRepo.GetPlayer(targetID)
 	if err != nil {
-		return ErrInvalidTarget
+		return apperrors.ErrInvalidTarget
 	}
 	if !target.IsAlive {
-		return ErrTargetDead
+		return apperrors.ErrTargetDead
 	}
 
 	// 5. Get target role
@@ -571,15 +572,15 @@ func (e *GameEngine) HandleWerewolfVote(gameID entities.GameID, werewolfID entit
 		return err
 	}
 	if game.Status != entities.GameStatusActive {
-		return ErrGameNotActive
+		return apperrors.ErrGameNotActive
 	}
 	if game.Phase != entities.PhaseNight {
-		return ErrWrongPhase
+		return apperrors.ErrWrongPhase
 	}
 
 	// 2. Validate it's werewolves' turn
 	if !e.nightService.CanWerewolvesVote(gameID) {
-		return ErrNotYourTurn
+		return apperrors.ErrNotYourTurn
 	}
 
 	// 3. Validate werewolf player
@@ -588,24 +589,24 @@ func (e *GameEngine) HandleWerewolfVote(gameID entities.GameID, werewolfID entit
 		return err
 	}
 	if !werewolf.IsAlive {
-		return ErrPlayerDead
+		return apperrors.ErrPlayerDead
 	}
 	if werewolf.Role == nil || werewolf.Role.GetType() != entities.RoleWerewolf {
-		return ErrWrongRole
+		return apperrors.ErrWrongRole
 	}
 
 	// 4. Validate target (if not abstaining)
 	if targetID != nil {
 		target, err := e.playerRepo.GetPlayer(*targetID)
 		if err != nil {
-			return ErrInvalidTarget
+			return apperrors.ErrInvalidTarget
 		}
 		if !target.IsAlive {
-			return ErrTargetDead
+			return apperrors.ErrTargetDead
 		}
 		// Werewolves can't target other werewolves
 		if target.Role != nil && target.Role.GetType() == entities.RoleWerewolf {
-			return ErrInvalidTarget
+			return apperrors.ErrInvalidTarget
 		}
 	}
 
@@ -641,15 +642,15 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 		return err
 	}
 	if game.Status != entities.GameStatusActive {
-		return ErrGameNotActive
+		return apperrors.ErrGameNotActive
 	}
 	if game.Phase != entities.PhaseNight {
-		return ErrWrongPhase
+		return apperrors.ErrWrongPhase
 	}
 
 	// 2. Validate it's witch's turn
 	if !e.nightService.CanWitchAct(gameID) {
-		return ErrNotYourTurn
+		return apperrors.ErrNotYourTurn
 	}
 
 	// 3. Validate witch player
@@ -658,10 +659,10 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 		return err
 	}
 	if !witch.IsAlive {
-		return ErrPlayerDead
+		return apperrors.ErrPlayerDead
 	}
 	if witch.Role == nil || witch.Role.GetType() != entities.RoleWitch {
-		return ErrWrongRole
+		return apperrors.ErrWrongRole
 	}
 
 	// 4. Get witch abilities
@@ -670,34 +671,34 @@ func (e *GameEngine) HandleWitchAction(gameID entities.GameID, witchID entities.
 	// 5. Validate heal action
 	if healTargetID != nil {
 		if !canHeal {
-			return ErrAbilityUsed
+			return apperrors.ErrAbilityUsed
 		}
 		// Can only heal the werewolf victim
 		victim := e.nightService.GetWerewolfVictim(gameID)
 		if victim == nil || *healTargetID != *victim {
-			return ErrCanOnlyHealVictim
+			return apperrors.ErrCanOnlyHealVictim
 		}
 	}
 
 	// 6. Validate poison action
 	if poisonTargetID != nil {
 		if !canPoison {
-			return ErrAbilityUsed
+			return apperrors.ErrAbilityUsed
 		}
 		if *poisonTargetID == witchID {
-			return ErrCannotTargetSelf
+			return apperrors.ErrCannotTargetSelf
 		}
 		target, err := e.playerRepo.GetPlayer(*poisonTargetID)
 		if err != nil {
-			return ErrInvalidTarget
+			return apperrors.ErrInvalidTarget
 		}
 		if !target.IsAlive {
-			return ErrTargetDead
+			return apperrors.ErrTargetDead
 		}
 		// Cannot poison someone already dying from werewolf attack
 		victim := e.nightService.GetWerewolfVictim(gameID)
 		if victim != nil && *poisonTargetID == *victim {
-			return ErrTargetAlreadyDying
+			return apperrors.ErrTargetAlreadyDying
 		}
 	}
 
@@ -736,10 +737,10 @@ func (e *GameEngine) HandleVillageVote(gameID entities.GameID, voterID entities.
 		return err
 	}
 	if game.Status != entities.GameStatusActive {
-		return ErrGameNotActive
+		return apperrors.ErrGameNotActive
 	}
 	if game.Phase != entities.PhaseVote {
-		return ErrWrongPhase
+		return apperrors.ErrWrongPhase
 	}
 
 	// 2. Validate voter is alive
@@ -748,21 +749,21 @@ func (e *GameEngine) HandleVillageVote(gameID entities.GameID, voterID entities.
 		return err
 	}
 	if !voter.IsAlive {
-		return ErrPlayerDead
+		return apperrors.ErrPlayerDead
 	}
 
 	// 3. Validate target (if not abstaining)
 	if targetID != nil {
 		// Cannot vote for yourself
 		if *targetID == voterID {
-			return ErrCannotTargetSelf
+			return apperrors.ErrCannotTargetSelf
 		}
 		target, err := e.playerRepo.GetPlayer(*targetID)
 		if err != nil {
-			return ErrInvalidTarget
+			return apperrors.ErrInvalidTarget
 		}
 		if !target.IsAlive {
-			return ErrTargetDead
+			return apperrors.ErrTargetDead
 		}
 	}
 

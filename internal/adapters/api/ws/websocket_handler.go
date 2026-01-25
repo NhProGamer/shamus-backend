@@ -5,9 +5,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"shamus-backend/internal/adapters/app"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 	"sync"
 
@@ -67,33 +67,33 @@ func (h *WebSocketHandler) IsPlayerConnected(playerID entities.PlayerID) bool {
 // errorToCode maps application errors to structured error codes
 func errorToCode(err error) events.ErrorCode {
 	switch {
-	case errors.Is(err, app.ErrWrongPhase):
+	case errors.Is(err, apperrors.ErrWrongPhase):
 		return events.ErrorCodeWrongPhase
-	case errors.Is(err, app.ErrNotYourTurn):
+	case errors.Is(err, apperrors.ErrNotYourTurn):
 		return events.ErrorCodeNotYourTurn
-	case errors.Is(err, app.ErrAlreadyActed):
+	case errors.Is(err, apperrors.ErrAlreadyActed):
 		return events.ErrorCodeAlreadyActed
-	case errors.Is(err, app.ErrGameNotActive):
+	case errors.Is(err, apperrors.ErrGameNotActive):
 		return events.ErrorCodeGameNotActive
-	case errors.Is(err, app.ErrPlayerDead):
+	case errors.Is(err, apperrors.ErrPlayerDead):
 		return events.ErrorCodePlayerDead
-	case errors.Is(err, app.ErrWrongRole):
+	case errors.Is(err, apperrors.ErrWrongRole):
 		return events.ErrorCodeWrongRole
-	case errors.Is(err, app.ErrInvalidTarget):
+	case errors.Is(err, apperrors.ErrInvalidTarget):
 		return events.ErrorCodeInvalidTarget
-	case errors.Is(err, app.ErrTargetDead):
+	case errors.Is(err, apperrors.ErrTargetDead):
 		return events.ErrorCodeTargetDead
-	case errors.Is(err, app.ErrCannotTargetSelf):
+	case errors.Is(err, apperrors.ErrCannotTargetSelf):
 		return events.ErrorCodeCannotTargetSelf
-	case errors.Is(err, app.ErrAbilityUsed):
+	case errors.Is(err, apperrors.ErrAbilityUsed):
 		return events.ErrorCodeAbilityUsed
-	case errors.Is(err, app.ErrCanOnlyHealVictim):
+	case errors.Is(err, apperrors.ErrCanOnlyHealVictim):
 		return events.ErrorCodeCanOnlyHealVictim
-	case errors.Is(err, app.ErrVoteNotFound):
+	case errors.Is(err, apperrors.ErrVoteNotFound):
 		return events.ErrorCodeVoteNotFound
-	case errors.Is(err, app.ErrVoteNotActive):
+	case errors.Is(err, apperrors.ErrVoteNotActive):
 		return events.ErrorCodeVoteNotActive
-	case errors.Is(err, app.ErrInvalidVoter):
+	case errors.Is(err, apperrors.ErrInvalidVoter):
 		return events.ErrorCodeInvalidVoter
 	default:
 		return events.ErrorCodeUnknown
