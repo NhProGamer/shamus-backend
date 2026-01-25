@@ -72,6 +72,7 @@ func main() {
 	// Wire up dependencies
 	gameRepo := infra.NewRedisGameRepo(rdb)
 	playerRepo := infra.NewRedisPlayerRepo(rdb)
+	voteRepo := infra.NewVoteRepository(rdb)
 
 	gameService := app.NewGameService(gameRepo, playerRepo)
 	visibilityService := app.NewVisibilityService()
@@ -88,7 +89,7 @@ func main() {
 
 	// Create game engine services (wsHandler implements Broadcaster and PlayerSender interfaces)
 	timerService := app.NewTimerService(wsHandler)
-	voteService := app.NewVoteService(wsHandler, wsHandler)
+	voteService := app.NewVoteService(voteRepo, wsHandler, wsHandler)
 	nightService := app.NewNightService(wsHandler, voteService)
 
 	// Create GameEngine and inject into WebSocketHandler

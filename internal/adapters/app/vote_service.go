@@ -1,28 +1,28 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
+	"shamus-backend/internal/adapters/infra"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
-	"sync"
 
 	"github.com/google/uuid"
 )
 
 // VoteService manages voting sessions for games
 type VoteService struct {
-	votes        map[entities.GameID]*entities.Vote
+	voteRepo     *infra.VoteRepository
 	broadcaster  ports.Broadcaster
 	playerSender ports.PlayerSender
-	lock         sync.RWMutex
 }
 
 // NewVoteService creates a new VoteService
-func NewVoteService(broadcaster ports.Broadcaster, playerSender ports.PlayerSender) *VoteService {
+func NewVoteService(voteRepo *infra.VoteRepository, broadcaster ports.Broadcaster, playerSender ports.PlayerSender) *VoteService {
 	return &VoteService{
-		votes:        make(map[entities.GameID]*entities.Vote),
+		voteRepo:     voteRepo,
 		broadcaster:  broadcaster,
 		playerSender: playerSender,
 	}
@@ -30,11 +30,14 @@ func NewVoteService(broadcaster ports.Broadcaster, playerSender ports.PlayerSend
 
 // StartVillageVote starts a village vote to eliminate a player
 func (s *VoteService) StartVillageVote(gameID entities.GameID, alivePlayers []*entities.Player) (*entities.Vote, error) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	ctx := context.TODO()
 
 	// Check if vote already exists
-	if _, exists := s.votes[gameID]; exists {
+	exists, err := s.voteRepo.VoteExists(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
 		return nil, apperrors.ErrVoteAlreadyExists
 	}
 
@@ -55,7 +58,9 @@ func (s *VoteService) StartVillageVote(gameID entities.GameID, alivePlayers []*e
 		true, // Allow abstain
 	)
 
-	s.votes[gameID] = vote
+	if err := s.voteRepo.SaveVote(ctx, gameID, vote); err != nil {
+		return nil, err
+	}
 
 	// Broadcast vote start event
 	s.broadcastVoteEvent(gameID, events.NewVoteEvent(events.StartVote, nil, nil))
@@ -65,11 +70,14 @@ func (s *VoteService) StartVillageVote(gameID entities.GameID, alivePlayers []*e
 
 // StartWerewolfVote starts a werewolf vote to choose a victim
 func (s *VoteService) StartWerewolfVote(gameID entities.GameID, werewolves []*entities.Player, potentialVictims []*entities.Player) (*entities.Vote, error) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	ctx := context.TODO()
 
 	// Check if vote already exists
-	if _, exists := s.votes[gameID]; exists {
+	exists, err := s.voteRepo.VoteExists(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
 		return nil, apperrors.ErrVoteAlreadyExists
 	}
 
@@ -97,7 +105,9 @@ func (s *VoteService) StartWerewolfVote(gameID entities.GameID, werewolves []*en
 		true, // Allow no attack
 	)
 
-	s.votes[gameID] = vote
+	if err := s.voteRepo.SaveVote(ctx, gameID, vote); err != nil {
+		return nil, err
+	}
 
 	// Broadcast vote start event (only to werewolves - handled by caller)
 
@@ -106,11 +116,13 @@ func (s *VoteService) StartWerewolfVote(gameID entities.GameID, werewolves []*en
 
 // CastVote records a player's vote
 func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	ctx := context.TODO()
 
-	vote, exists := s.votes[gameID]
-	if !exists {
+	vote, err := s.voteRepo.GetVote(ctx, gameID)
+	if err != nil {
+		return err
+	}
+	if vote == nil {
 		return apperrors.ErrVoteNotFound
 	}
 
@@ -120,6 +132,11 @@ func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID
 
 	if !vote.CastBallot(voterID, targetID) {
 		return apperrors.ErrInvalidVoter
+	}
+
+	// Save updated vote
+	if err := s.voteRepo.SaveVote(ctx, gameID, vote); err != nil {
+		return err
 	}
 
 	// Broadcast player vote event
@@ -138,11 +155,10 @@ func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID
 
 // HasEveryoneVoted checks if all eligible voters have voted
 func (s *VoteService) HasEveryoneVoted(gameID entities.GameID) bool {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
+	ctx := context.TODO()
 
-	vote, exists := s.votes[gameID]
-	if !exists {
+	vote, err := s.voteRepo.GetVote(ctx, gameID)
+	if err != nil || vote == nil {
 		return false
 	}
 
@@ -151,11 +167,13 @@ func (s *VoteService) HasEveryoneVoted(gameID entities.GameID) bool {
 
 // ResolveVote resolves the current vote and returns the result
 func (s *VoteService) ResolveVote(gameID entities.GameID) (*entities.VoteResult, error) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	ctx := context.TODO()
 
-	vote, exists := s.votes[gameID]
-	if !exists {
+	vote, err := s.voteRepo.GetVote(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+	if vote == nil {
 		return nil, apperrors.ErrVoteNotFound
 	}
 
@@ -169,28 +187,27 @@ func (s *VoteService) ResolveVote(gameID entities.GameID) (*entities.VoteResult,
 
 // GetVote returns the current vote for a game
 func (s *VoteService) GetVote(gameID entities.GameID) (*entities.Vote, bool) {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
+	ctx := context.TODO()
 
-	vote, exists := s.votes[gameID]
-	return vote, exists
+	vote, err := s.voteRepo.GetVote(ctx, gameID)
+	if err != nil || vote == nil {
+		return nil, false
+	}
+	return vote, true
 }
 
 // ClearVote removes the vote for a game
 func (s *VoteService) ClearVote(gameID entities.GameID) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	delete(s.votes, gameID)
+	ctx := context.TODO()
+	s.voteRepo.DeleteVote(ctx, gameID)
 }
 
 // GetVoteCount returns the number of votes for each target
 func (s *VoteService) GetVoteCount(gameID entities.GameID) map[entities.PlayerID]int {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
+	ctx := context.TODO()
 
-	vote, exists := s.votes[gameID]
-	if !exists {
+	vote, err := s.voteRepo.GetVote(ctx, gameID)
+	if err != nil || vote == nil {
 		return nil
 	}
 
