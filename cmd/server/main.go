@@ -108,6 +108,10 @@ func main() {
 	)
 	wsHandler.SetGameEngine(gameEngine)
 	wsHandler.SetActionService(actionService)
+	
+	// Complete circular dependency: inject ActionService into GameEngine
+	// This will automatically register action callbacks (witch, seer, etc.)
+	gameEngine.SetActionService(actionService)
 
 	log.Info().Msg("Game engine services initialized")
 
