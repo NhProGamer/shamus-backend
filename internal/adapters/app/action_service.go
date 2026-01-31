@@ -7,7 +7,7 @@ import (
 	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
-	"shamus-backend/internal/infrastructure/logger"
+	"shamus-backend/pkg/logger"
 	"sync"
 	"time"
 
