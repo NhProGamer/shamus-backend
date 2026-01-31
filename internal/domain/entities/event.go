@@ -11,6 +11,7 @@ const (
 	EventChannelConnection EventChannel = "conn_event"
 	EventChannelSettings   EventChannel = "settings_event"
 	EventChannelTimer      EventChannel = "timer_event"
+	EventChannelAction     EventChannel = "action_event"
 )
 
 type Event[T any] struct {

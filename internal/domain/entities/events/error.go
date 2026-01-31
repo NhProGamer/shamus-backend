@@ -24,6 +24,10 @@ const (
 	ErrorCodeVoteNotActive        ErrorCode = "VOTE_NOT_ACTIVE"
 	ErrorCodeInvalidVoter         ErrorCode = "INVALID_VOTER"
 	ErrorCodeInvalidAction        ErrorCode = "INVALID_ACTION"
+	ErrorCodeActionNotFound       ErrorCode = "ACTION_NOT_FOUND"
+	ErrorCodeActionExpired        ErrorCode = "ACTION_EXPIRED"
+	ErrorCodeActionInvalidResponse ErrorCode = "ACTION_INVALID_RESPONSE"
+	ErrorCodeActionWrongPlayer    ErrorCode = "ACTION_WRONG_PLAYER"
 	ErrorCodeUnknown              ErrorCode = "UNKNOWN_ERROR"
 )
 
