@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"shamus-backend/internal/domain/entities"
+	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 	"shamus-backend/internal/infrastructure/logger"
@@ -285,12 +286,50 @@ func (s *ActionService) invokeCallback(action *entities.Action, response json.Ra
 
 // sendActionToPlayer sends an action to the player via PlayerSender
 func (s *ActionService) sendActionToPlayer(action *entities.Action) error {
-	// Create action event
-	// TODO: This will be implemented in Phase 2 when we add action_event channel
-	// For now, just log it
+	// Deserialize payload to interface{} for event
+	var payload interface{}
+	if err := json.Unmarshal(action.Payload, &payload); err != nil {
+		logger.Get().Error().
+			Str("actionID", string(action.ID)).
+			Err(err).
+			Msg("Failed to unmarshal action payload for sending")
+		return err
+	}
+
+	// Create action created event using helper
+	event := events.NewActionCreatedEvent(
+		string(action.ID),
+		action.Type,
+		payload,
+		action.ExpiresAt,
+		action.Timeout,
+	)
+
+	// Serialize event to JSON
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		logger.Get().Error().
+			Str("actionID", string(action.ID)).
+			Err(err).
+			Msg("Failed to marshal action event")
+		return err
+	}
+
+	// Send to player
+	if err := s.playerSender.SendToPlayer(action.PlayerID, eventBytes); err != nil {
+		logger.Get().Warn().
+			Str("actionID", string(action.ID)).
+			Str("playerID", string(action.PlayerID)).
+			Err(err).
+			Msg("Failed to send action to player")
+		return err
+	}
+
 	logger.Get().Debug().
 		Str("actionID", string(action.ID)).
 		Str("playerID", string(action.PlayerID)).
-		Msg("Would send action to player (WebSocket integration pending)")
+		Str("type", string(action.Type)).
+		Msg("Action sent to player")
+
 	return nil
 }
