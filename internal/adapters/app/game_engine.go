@@ -65,6 +65,9 @@ func (e *GameEngine) SetActionService(as ports.ActionService) {
 	// Register action callbacks
 	if as != nil {
 		as.RegisterCallback(entities.ActionTypeWitchPotion, e.HandleWitchActionCallback)
+		as.RegisterCallback(entities.ActionTypeSeerVision, e.HandleSeerActionCallback)
+		as.RegisterCallback(entities.ActionTypeWerewolfVote, e.HandleWerewolfVoteCallback)
+		as.RegisterCallback(entities.ActionTypeVillageVote, e.HandleVillageVoteCallback)
 	}
 }
 
@@ -161,19 +164,28 @@ func (e *GameEngine) startNextNightPhase(gameID entities.GameID, players []*enti
 	// Start the appropriate timer
 	switch currentPhase {
 	case entities.NightPhaseSeer:
-		e.timerService.StartRoleTimer(gameID, entities.RoleSeer)
+		// Use action system for seer
+		if e.actionService != nil {
+			e.startSeerActionPhase(gameID, players)
+		} else {
+			e.timerService.StartRoleTimer(gameID, entities.RoleSeer)
+		}
 	case entities.NightPhaseWerewolf:
-		// Start werewolf vote
-		werewolves := GetPlayersWithRole(players, entities.RoleWerewolf)
-		victims := GetNonWerewolfPlayers(players)
-		e.voteService.StartWerewolfVote(gameID, werewolves, victims)
-		e.timerService.StartRoleTimer(gameID, entities.RoleWerewolf)
+		// Use action system for werewolves
+		if e.actionService != nil {
+			e.startWerewolfVotePhase(gameID, players)
+		} else {
+			// Fallback to old system
+			werewolves := GetPlayersWithRole(players, entities.RoleWerewolf)
+			victims := GetNonWerewolfPlayers(players)
+			e.voteService.StartWerewolfVote(gameID, werewolves, victims)
+			e.timerService.StartRoleTimer(gameID, entities.RoleWerewolf)
+		}
 	case entities.NightPhaseWitch:
-		// Use action system for witch instead of timer + event
+		// Use action system for witch
 		if e.actionService != nil {
 			e.startWitchActionPhase(gameID, players)
 		} else {
-			// Fallback to old system if action service not available
 			e.timerService.StartRoleTimer(gameID, entities.RoleWitch)
 		}
 	}
@@ -312,20 +324,23 @@ func (e *GameEngine) TransitionToVote(gameID entities.GameID) error {
 		}
 	}
 
-	// Start village vote
-	_, err = e.voteService.StartVillageVote(gameID, alivePlayers)
-	if err != nil {
-		return err
-	}
-
 	// Update game state
 	game.Phase = entities.PhaseVote
 	if err := e.gameRepo.SaveGame(context.TODO(), game); err != nil {
 		return err
 	}
 
-	// Start vote timer
-	e.timerService.StartPhaseTimer(gameID, entities.PhaseVote)
+	// Use action system for village vote
+	if e.actionService != nil {
+		e.startVillageVotePhase(gameID, alivePlayers)
+	} else {
+		// Fallback to old system
+		_, err = e.voteService.StartVillageVote(gameID, alivePlayers)
+		if err != nil {
+			return err
+		}
+		e.timerService.StartPhaseTimer(gameID, entities.PhaseVote)
+	}
 
 	logger.Get().Info().Msgf("Game %s transitioned to vote phase", gameID)
 	return nil
@@ -912,4 +927,305 @@ func (e *GameEngine) startWitchActionPhase(gameID entities.GameID, players []*en
 			Dur("timeout", timeout).
 			Msg("Witch action created")
 	}
+}
+
+// HandleSeerActionCallback is called when a seer responds to vision action (or times out)
+func (e *GameEngine) HandleSeerActionCallback(gameID entities.GameID, playerID entities.PlayerID, action *entities.Action, response json.RawMessage) error {
+	// If response is nil, the action timed out - seer does nothing
+	if response == nil {
+		logger.Get().Info().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Msg("Seer action timed out - no vision")
+		
+		// Record empty seer action
+		e.nightService.RecordSeerAction(gameID, "", entities.RoleType(""))
+		
+		// Advance to next night phase
+		state, exists := e.nightService.GetNightState(gameID)
+		if exists {
+			e.advanceNightPhase(gameID, state)
+		}
+		
+		return nil
+	}
+
+	// Deserialize response
+	var seerResponse actions.SeerVisionResponse
+	if err := json.Unmarshal(response, &seerResponse); err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Err(err).
+			Msg("Failed to unmarshal seer action response")
+		return apperrors.Wrap("INVALID_RESPONSE", "failed to unmarshal seer response", err)
+	}
+
+	// Call the existing HandleSeerAction logic
+	if err := e.HandleSeerAction(gameID, playerID, seerResponse.TargetID); err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Err(err).
+			Msg("Seer action callback failed")
+		return err
+	}
+
+	return nil
+}
+
+// HandleWerewolfVoteCallback is called when a werewolf responds to vote action (or times out)
+func (e *GameEngine) HandleWerewolfVoteCallback(gameID entities.GameID, playerID entities.PlayerID, action *entities.Action, response json.RawMessage) error {
+	// If response is nil, the action timed out - werewolf abstains
+	if response == nil {
+		logger.Get().Info().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Msg("Werewolf vote timed out - abstain")
+		
+		// Cast abstain vote
+		if err := e.HandleWerewolfVote(gameID, playerID, nil); err != nil {
+			logger.Get().Error().Err(err).Msg("Failed to handle werewolf timeout vote")
+		}
+		
+		return nil
+	}
+
+	// Deserialize response
+	var wolfResponse actions.WerewolfVoteResponse
+	if err := json.Unmarshal(response, &wolfResponse); err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Err(err).
+			Msg("Failed to unmarshal werewolf vote response")
+		return apperrors.Wrap("INVALID_RESPONSE", "failed to unmarshal werewolf response", err)
+	}
+
+	// Call the existing HandleWerewolfVote logic
+	if err := e.HandleWerewolfVote(gameID, playerID, wolfResponse.TargetID); err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Err(err).
+			Msg("Werewolf vote callback failed")
+		return err
+	}
+
+	return nil
+}
+
+// HandleVillageVoteCallback is called when a player responds to village vote (or times out)
+func (e *GameEngine) HandleVillageVoteCallback(gameID entities.GameID, playerID entities.PlayerID, action *entities.Action, response json.RawMessage) error {
+	// If response is nil, the action timed out - player abstains
+	if response == nil {
+		logger.Get().Info().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Msg("Village vote timed out - abstain")
+		
+		// Cast abstain vote
+		if err := e.HandleVillageVote(gameID, playerID, nil); err != nil {
+			logger.Get().Error().Err(err).Msg("Failed to handle village timeout vote")
+		}
+		
+		return nil
+	}
+
+	// Deserialize response
+	var voteResponse actions.VillageVoteResponse
+	if err := json.Unmarshal(response, &voteResponse); err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Err(err).
+			Msg("Failed to unmarshal village vote response")
+		return apperrors.Wrap("INVALID_RESPONSE", "failed to unmarshal village response", err)
+	}
+
+	// Call the existing HandleVillageVote logic
+	if err := e.HandleVillageVote(gameID, playerID, voteResponse.TargetID); err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Err(err).
+			Msg("Village vote callback failed")
+		return err
+	}
+
+	return nil
+}
+
+// startSeerActionPhase creates and sends a seer action
+func (e *GameEngine) startSeerActionPhase(gameID entities.GameID, players []*entities.Player) {
+	// Find the seer
+	var seer *entities.Player
+	for _, p := range players {
+		if p.Role != nil && p.Role.GetType() == entities.RoleSeer && p.IsAlive {
+			seer = p
+			break
+		}
+	}
+
+	if seer == nil {
+		logger.Get().Warn().
+			Str("gameID", string(gameID)).
+			Msg("No alive seer found during seer phase")
+		state, exists := e.nightService.GetNightState(gameID)
+		if exists {
+			e.advanceNightPhase(gameID, state)
+		}
+		return
+	}
+
+	// Get eligible targets (all alive players except seer)
+	var eligibleTargets []entities.PlayerID
+	for _, p := range players {
+		if p.IsAlive && p.ID != seer.ID {
+			eligibleTargets = append(eligibleTargets, p.ID)
+		}
+	}
+
+	// Create payload
+	payload := actions.SeerVisionPayload{
+		EligibleTargets: eligibleTargets,
+	}
+
+	// Create action with 20 second timeout
+	timeout := SeerTimerDuration
+	_, err := e.actionService.CreateAction(
+		gameID,
+		seer.ID,
+		entities.ActionTypeSeerVision,
+		payload,
+		timeout,
+	)
+
+	if err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("seerID", string(seer.ID)).
+			Err(err).
+			Msg("Failed to create seer action")
+		e.timerService.StartRoleTimer(gameID, entities.RoleSeer)
+	} else {
+		logger.Get().Info().
+			Str("gameID", string(gameID)).
+			Str("seerID", string(seer.ID)).
+			Dur("timeout", timeout).
+			Msg("Seer action created")
+	}
+}
+
+// startWerewolfVotePhase creates and sends werewolf vote actions
+func (e *GameEngine) startWerewolfVotePhase(gameID entities.GameID, players []*entities.Player) {
+	werewolves := GetPlayersWithRole(players, entities.RoleWerewolf)
+	victims := GetNonWerewolfPlayers(players)
+
+	if len(werewolves) == 0 {
+		logger.Get().Warn().
+			Str("gameID", string(gameID)).
+			Msg("No alive werewolves found")
+		state, exists := e.nightService.GetNightState(gameID)
+		if exists {
+			e.advanceNightPhase(gameID, state)
+		}
+		return
+	}
+
+	// Get eligible targets
+	var eligibleTargets []entities.PlayerID
+	for _, v := range victims {
+		if v.IsAlive {
+			eligibleTargets = append(eligibleTargets, v.ID)
+		}
+	}
+
+	// Create payload
+	payload := actions.WerewolfVotePayload{
+		EligibleTargets: eligibleTargets,
+	}
+
+	// Create action for each werewolf
+	timeout := WerewolfTimerDuration
+	for _, wolf := range werewolves {
+		if !wolf.IsAlive {
+			continue
+		}
+
+		_, err := e.actionService.CreateAction(
+			gameID,
+			wolf.ID,
+			entities.ActionTypeWerewolfVote,
+			payload,
+			timeout,
+		)
+
+		if err != nil {
+			logger.Get().Error().
+				Str("gameID", string(gameID)).
+				Str("werewolfID", string(wolf.ID)).
+				Err(err).
+				Msg("Failed to create werewolf vote action")
+		} else {
+			logger.Get().Info().
+				Str("gameID", string(gameID)).
+				Str("werewolfID", string(wolf.ID)).
+				Dur("timeout", timeout).
+				Msg("Werewolf vote action created")
+		}
+	}
+
+	// Also start the vote in VoteService for tracking
+	e.voteService.StartWerewolfVote(gameID, werewolves, victims)
+}
+
+// startVillageVotePhase creates and sends village vote actions
+func (e *GameEngine) startVillageVotePhase(gameID entities.GameID, alivePlayers []*entities.Player) {
+	if len(alivePlayers) == 0 {
+		logger.Get().Warn().
+			Str("gameID", string(gameID)).
+			Msg("No alive players for village vote")
+		return
+	}
+
+	// Get eligible targets (all alive players)
+	var eligibleTargets []entities.PlayerID
+	for _, p := range alivePlayers {
+		eligibleTargets = append(eligibleTargets, p.ID)
+	}
+
+	// Create payload
+	payload := actions.VillageVotePayload{
+		EligibleTargets: eligibleTargets,
+	}
+
+	// Create action for each alive player
+	timeout := VotePhaseDuration
+	for _, player := range alivePlayers {
+		_, err := e.actionService.CreateAction(
+			gameID,
+			player.ID,
+			entities.ActionTypeVillageVote,
+			payload,
+			timeout,
+		)
+
+		if err != nil {
+			logger.Get().Error().
+				Str("gameID", string(gameID)).
+				Str("playerID", string(player.ID)).
+				Err(err).
+				Msg("Failed to create village vote action")
+		} else {
+			logger.Get().Info().
+				Str("gameID", string(gameID)).
+				Str("playerID", string(player.ID)).
+				Dur("timeout", timeout).
+				Msg("Village vote action created")
+		}
+	}
+
+	// Also start the vote in VoteService for tracking
+	e.voteService.StartVillageVote(gameID, alivePlayers)
 }
