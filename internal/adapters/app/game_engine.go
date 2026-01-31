@@ -20,13 +20,14 @@ type WinResult struct {
 
 // GameEngine orchestrates game flow and phase transitions
 type GameEngine struct {
-	gameRepo     ports.GameRepository
-	playerRepo   ports.PlayerRepository
-	timerService *TimerService
-	voteService  *VoteService
-	nightService *NightService
-	broadcaster  ports.Broadcaster
-	playerSender ports.PlayerSender
+	gameRepo      ports.GameRepository
+	playerRepo    ports.PlayerRepository
+	timerService  *TimerService
+	voteService   *VoteService
+	nightService  *NightService
+	actionService ports.ActionService
+	broadcaster   ports.Broadcaster
+	playerSender  ports.PlayerSender
 }
 
 // NewGameEngine creates a new GameEngine
@@ -55,6 +56,16 @@ func NewGameEngine(
 	}
 
 	return engine
+}
+
+// SetActionService sets the action service (used to break circular dependency)
+func (e *GameEngine) SetActionService(as ports.ActionService) {
+	e.actionService = as
+	
+	// Register action callbacks
+	if as != nil {
+		as.RegisterCallback(entities.ActionTypeWitchPotion, e.HandleWitchActionCallback)
+	}
 }
 
 // handleTimerExpiry is called when a timer expires
@@ -158,7 +169,13 @@ func (e *GameEngine) startNextNightPhase(gameID entities.GameID, players []*enti
 		e.voteService.StartWerewolfVote(gameID, werewolves, victims)
 		e.timerService.StartRoleTimer(gameID, entities.RoleWerewolf)
 	case entities.NightPhaseWitch:
-		e.timerService.StartRoleTimer(gameID, entities.RoleWitch)
+		// Use action system for witch instead of timer + event
+		if e.actionService != nil {
+			e.startWitchActionPhase(gameID, players)
+		} else {
+			// Fallback to old system if action service not available
+			e.timerService.StartRoleTimer(gameID, entities.RoleWitch)
+		}
 	}
 }
 
@@ -832,4 +849,67 @@ func (e *GameEngine) HandleWitchActionCallback(gameID entities.GameID, playerID 
 	}
 
 	return nil
+}
+
+// startWitchActionPhase creates and sends a witch action instead of timer + event
+func (e *GameEngine) startWitchActionPhase(gameID entities.GameID, players []*entities.Player) {
+	// Find the witch
+	var witch *entities.Player
+	for _, p := range players {
+		if p.Role != nil && p.Role.GetType() == entities.RoleWitch && p.IsAlive {
+			witch = p
+			break
+		}
+	}
+
+	if witch == nil {
+		logger.Get().Warn().
+			Str("gameID", string(gameID)).
+			Msg("No alive witch found during witch phase")
+		// Skip phase
+		state, exists := e.nightService.GetNightState(gameID)
+		if exists {
+			e.advanceNightPhase(gameID, state)
+		}
+		return
+	}
+
+	// Get witch abilities
+	canHeal, canPoison := e.nightService.GetWitchAbilities(gameID)
+	
+	// Get werewolf victim
+	victim := e.nightService.GetWerewolfVictim(gameID)
+
+	// Create payload
+	payload := actions.WitchPotionPayload{
+		VictimID:        victim,
+		HasHealPotion:   canHeal,
+		HasPoisonPotion: canPoison,
+	}
+
+	// Create action with 45 second timeout (same as WitchTimerDuration)
+	timeout := WitchTimerDuration
+	_, err := e.actionService.CreateAction(
+		gameID,
+		witch.ID,
+		entities.ActionTypeWitchPotion,
+		payload,
+		timeout,
+	)
+
+	if err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("witchID", string(witch.ID)).
+			Err(err).
+			Msg("Failed to create witch action")
+		// Fallback to timer
+		e.timerService.StartRoleTimer(gameID, entities.RoleWitch)
+	} else {
+		logger.Get().Info().
+			Str("gameID", string(gameID)).
+			Str("witchID", string(witch.ID)).
+			Dur("timeout", timeout).
+			Msg("Witch action created")
+	}
 }
