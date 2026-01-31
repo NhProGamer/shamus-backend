@@ -1,6 +1,7 @@
 package ports
 
 import (
+	"encoding/json"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	"time"
@@ -178,4 +179,34 @@ type GameEngine interface {
 
 	// HandleVillageVote processes a village vote during day
 	HandleVillageVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
+}
+
+// ActionCallback is called when an action is completed or expires
+// If response is nil, the action timed out and the callback should apply default behavior
+type ActionCallback func(gameID entities.GameID, playerID entities.PlayerID, action *entities.Action, response json.RawMessage) error
+
+// ActionService manages player actions that require responses with timeouts
+type ActionService interface {
+	// CreateAction creates a new action and sends it to the player
+	// The action will expire after the specified timeout
+	// The payload should be serialized JSON of the appropriate payload type
+	CreateAction(gameID entities.GameID, playerID entities.PlayerID, actionType entities.ActionType, payload interface{}, timeout time.Duration) (*entities.Action, error)
+
+	// RespondToAction processes a player's response to an action
+	// Returns an error if the action is expired, invalid, or doesn't belong to the player
+	RespondToAction(actionID entities.ActionID, playerID entities.PlayerID, response interface{}) error
+
+	// CancelAction manually cancels a pending action
+	// This is used when game state changes and the action is no longer relevant
+	CancelAction(actionID entities.ActionID) error
+
+	// GetAction retrieves an action by ID
+	GetAction(actionID entities.ActionID) (*entities.Action, error)
+
+	// GetPendingActions retrieves all pending actions for a player
+	GetPendingActions(playerID entities.PlayerID) ([]*entities.Action, error)
+
+	// RegisterCallback registers a callback function for a specific action type
+	// The callback will be invoked when the action is completed (response received) or expires (timeout)
+	RegisterCallback(actionType entities.ActionType, callback ActionCallback)
 }
