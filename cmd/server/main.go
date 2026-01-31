@@ -73,6 +73,7 @@ func main() {
 	gameRepo := infra.NewRedisGameRepo(rdb)
 	playerRepo := infra.NewRedisPlayerRepo(rdb)
 	voteRepo := infra.NewVoteRepository(rdb)
+	actionRepo := infra.NewInMemoryActionRepository()
 
 	gameService := app.NewGameService(gameRepo, playerRepo)
 	visibilityService := app.NewVisibilityService()
@@ -86,6 +87,9 @@ func main() {
 
 	// Inject PlayerService into WebSocketHandler (completes the wiring)
 	wsHandler.SetPlayerService(playerService)
+
+	// Create action service (wsHandler implements PlayerSender interface)
+	actionService := app.NewActionService(actionRepo, wsHandler)
 
 	// Create game engine services (wsHandler implements Broadcaster and PlayerSender interfaces)
 	timerService := app.NewTimerService(wsHandler)
@@ -103,6 +107,7 @@ func main() {
 		wsHandler,
 	)
 	wsHandler.SetGameEngine(gameEngine)
+	wsHandler.SetActionService(actionService)
 
 	log.Info().Msg("Game engine services initialized")
 
