@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"shamus-backend/internal/domain/entities"
+	"shamus-backend/internal/domain/entities/actions"
 	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
@@ -782,6 +783,52 @@ func (e *GameEngine) HandleVillageVote(gameID entities.GameID, voterID entities.
 	if e.voteService.HasEveryoneVoted(gameID) {
 		// Skip timer and process the result
 		e.timerService.SkipTimer(gameID)
+	}
+
+	return nil
+}
+
+// HandleWitchActionCallback is called when a witch responds to her action (or times out)
+// This is registered as a callback in the ActionService
+func (e *GameEngine) HandleWitchActionCallback(gameID entities.GameID, playerID entities.PlayerID, action *entities.Action, response json.RawMessage) error {
+	// If response is nil, the action timed out - witch does nothing
+	if response == nil {
+		logger.Get().Info().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Msg("Witch action timed out - no potion used")
+		
+		// Record that witch did nothing
+		e.nightService.RecordWitchAction(gameID, nil, nil)
+		
+		// Advance to next night phase
+		state, exists := e.nightService.GetNightState(gameID)
+		if exists {
+			e.advanceNightPhase(gameID, state)
+		}
+		
+		return nil
+	}
+
+	// Deserialize response
+	var witchResponse actions.WitchPotionResponse
+	if err := json.Unmarshal(response, &witchResponse); err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Err(err).
+			Msg("Failed to unmarshal witch action response")
+		return apperrors.Wrap("INVALID_RESPONSE", "failed to unmarshal witch response", err)
+	}
+
+	// Call the existing HandleWitchAction logic for validation and processing
+	if err := e.HandleWitchAction(gameID, playerID, witchResponse.HealTargetID, witchResponse.PoisonTargetID); err != nil {
+		logger.Get().Error().
+			Str("gameID", string(gameID)).
+			Str("playerID", string(playerID)).
+			Err(err).
+			Msg("Witch action callback failed")
+		return err
 	}
 
 	return nil
