@@ -113,3 +113,13 @@ var (
 	ErrInvalidVoter      = New("INVALID_VOTER", "player is not eligible to vote")
 	ErrVoteNotActive     = New("VOTE_NOT_ACTIVE", "vote is not active")
 )
+
+// Action errors
+var (
+	ErrActionNotFound         = New("ACTION_NOT_FOUND", "action not found")
+	ErrActionExpired          = New("ACTION_EXPIRED", "action has expired")
+	ErrActionAlreadyCompleted = New("ACTION_ALREADY_COMPLETED", "action already completed")
+	ErrActionInvalidResponse  = New("ACTION_INVALID_RESPONSE", "invalid response format")
+	ErrActionWrongPlayer      = New("ACTION_WRONG_PLAYER", "action does not belong to this player")
+	ErrActionCancelled        = New("ACTION_CANCELLED", "action was cancelled")
+)
