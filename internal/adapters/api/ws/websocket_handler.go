@@ -25,6 +25,7 @@ type WebSocketHandler struct {
 	visibilityService ports.VisibilityService
 	chatService       ports.ChatService
 	gameEngine        ports.GameEngine
+	actionService     ports.ActionService
 
 	// rooms maps GameID to list of sessions for targeted broadcast
 	rooms map[entities.GameID][]*melody.Session
@@ -55,6 +56,11 @@ func (h *WebSocketHandler) SetPlayerService(ps ports.PlayerService) {
 // SetGameEngine sets the game engine (used to break circular dependency)
 func (h *WebSocketHandler) SetGameEngine(ge ports.GameEngine) {
 	h.gameEngine = ge
+}
+
+// SetActionService sets the action service (used to break circular dependency)
+func (h *WebSocketHandler) SetActionService(as ports.ActionService) {
+	h.actionService = as
 }
 
 // IsPlayerConnected checks if a player has an active WebSocket session
@@ -517,6 +523,48 @@ func (h *WebSocketHandler) setupEvents() {
 				h.broadcastToRoom(gameID, payload)
 
 				logger.Get().Info().Msgf("Host %s updated settings for game %s: %v", playerID, gameID, updatedGame.Settings.Roles)
+			}
+
+		case entities.EventChannelAction:
+			switch event.Type {
+			case events.EventTypeActionResponse:
+				// Player is responding to an action
+				if h.actionService == nil {
+					sendErrorMessage(s, events.ErrorCodeUnknown, "Action service not available", "action_response")
+					return
+				}
+
+				var responseData events.ActionResponseEventData
+				if err := json.Unmarshal(event.Data, &responseData); err != nil {
+					logger.Get().Info().Msgf("Failed to unmarshal action response: %v", err)
+					sendErrorMessage(s, events.ErrorCodeActionInvalidResponse, "Invalid response format", "action_response")
+					return
+				}
+
+				// Process the action response
+				actionID := entities.ActionID(responseData.ActionID)
+				if err := h.actionService.RespondToAction(actionID, playerID, responseData.Response); err != nil {
+					// Map action errors to appropriate error codes
+					var code events.ErrorCode
+					switch {
+					case errors.Is(err, apperrors.ErrActionNotFound):
+						code = events.ErrorCodeActionNotFound
+					case errors.Is(err, apperrors.ErrActionExpired):
+						code = events.ErrorCodeActionExpired
+					case errors.Is(err, apperrors.ErrActionWrongPlayer):
+						code = events.ErrorCodeActionWrongPlayer
+					case errors.Is(err, apperrors.ErrActionInvalidResponse):
+						code = events.ErrorCodeActionInvalidResponse
+					default:
+						code = events.ErrorCodeUnknown
+					}
+					sendErrorMessage(s, code, err.Error(), "action_response")
+					return
+				}
+
+				// Send acknowledgement
+				sendAck(s, "action_response", true, "")
+				logger.Get().Info().Msgf("Player %s responded to action %s in game %s", playerID, responseData.ActionID, gameID)
 			}
 		}
 	})
