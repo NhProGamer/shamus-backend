@@ -21,6 +21,13 @@ const (
 	MayorTiebreakerDuration = 30 * time.Second
 )
 
+// WinResult represents the outcome of a win condition check
+type WinResult struct {
+	GameEnded   bool
+	WinningClan entities.Clan
+	Winners     []entities.PlayerID
+}
+
 // GameEngineV2 orchestrates game flow using the new Prompt/Notification architecture
 type GameEngineV2 struct {
 	gameRepo      ports.GameRepository

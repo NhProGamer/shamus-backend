@@ -69,64 +69,52 @@ func main() {
 	}
 	log.Info().Msg("Connected to Redis")
 
-	// Wire up dependencies
+	// === REPOSITORIES ===
 	gameRepo := infra.NewRedisGameRepo(rdb)
 	playerRepo := infra.NewRedisPlayerRepo(rdb)
 	voteRepo := infra.NewVoteRepository(rdb)
-	actionRepo := infra.NewInMemoryActionRepository()
 
+	// === CORE SERVICES ===
 	gameService := app.NewGameService(gameRepo, playerRepo)
-	visibilityService := app.NewVisibilityService()
 	chatService := app.NewChatService()
 
-	// Create WebSocket handler first (without PlayerService to break circular dependency)
-	wsHandler := ws.NewWebSocketHandler(m, gameService, visibilityService, chatService)
+	// === SESSION MANAGER ===
+	// Manages WebSocket sessions and game rooms
+	sessionManager := ws.NewSessionManager()
 
-	// Create PlayerService with WebSocketHandler as ConnectionChecker
+	// === NOTIFICATION SERVICE ===
+	// Sends typed notifications to players (server -> client, one-way)
+	notificationService := app.NewNotificationService(sessionManager, sessionManager, playerRepo)
+
+	// === PROMPT SERVICE ===
+	// Handles interactive prompts with timeouts and group voting
+	promptService := app.NewPromptService(sessionManager, notificationService, playerRepo)
+
+	// === COMMAND HANDLER ===
+	// Handles client-initiated commands (chat, settings, start, kick)
+	// Note: PlayerService and GameEngine will be set later to break circular dependency
+	commandHandler := ws.NewCommandHandler(gameService, nil, chatService, notificationService)
+
+	// === WEBSOCKET HANDLER ===
+	// Main WebSocket handler using Notification/Prompt/Command architecture
+	wsHandler := ws.NewHandler(m, sessionManager, promptService, commandHandler, notificationService, gameService)
+
+	// === PLAYER SERVICE ===
+	// Now we can create PlayerService with wsHandler as ConnectionChecker
 	playerService := app.NewPlayerService(playerRepo, gameRepo, wsHandler)
 
-	// Inject PlayerService into WebSocketHandler (completes the wiring)
+	// Inject PlayerService into WebSocket handler and CommandHandler
 	wsHandler.SetPlayerService(playerService)
+	commandHandler.SetPlayerService(playerService)
 
-	// Create action service (wsHandler implements PlayerSender interface)
-	actionService := app.NewActionService(actionRepo, wsHandler)
+	// === GAME ENGINE SERVICES ===
+	// VoteService for legacy compatibility (used by NightService)
+	voteService := app.NewVoteService(voteRepo, sessionManager, sessionManager)
+	nightService := app.NewNightService(sessionManager, voteService)
 
-	// Create game engine services (wsHandler implements Broadcaster and PlayerSender interfaces)
-	timerService := app.NewTimerService(wsHandler)
-	voteService := app.NewVoteService(voteRepo, wsHandler, wsHandler)
-	nightService := app.NewNightService(wsHandler, voteService)
-
-	// Create GameEngine and inject into WebSocketHandler
-	gameEngine := app.NewGameEngine(
-		gameRepo,
-		playerRepo,
-		timerService,
-		voteService,
-		nightService,
-		wsHandler,
-		wsHandler,
-	)
-	wsHandler.SetGameEngine(gameEngine)
-	wsHandler.SetActionService(actionService)
-
-	// Complete circular dependency: inject ActionService into GameEngine
-	// This will automatically register action callbacks (witch, seer, etc.)
-	gameEngine.SetActionService(actionService)
-
-	log.Info().Msg("Game engine services initialized (legacy)")
-
-	// --- NEW ARCHITECTURE (Notification/Prompt/Command) ---
-	// These services are created but not yet wired to the main handler.
-	// To enable the new architecture, switch WebsocketHandler to ws.Handler in AppContext.
-
-	// NotificationService provides typed notifications
-	notificationService := app.NewNotificationService(wsHandler, wsHandler, playerRepo)
-
-	// PromptService handles prompts with timeouts and group voting
-	promptService := app.NewPromptService(wsHandler, notificationService, playerRepo)
-
-	// GameEngineV2 uses the new Prompt/Notification architecture
-	_ = app.NewGameEngineV2(
+	// === GAME ENGINE V2 ===
+	// Orchestrates game flow using Prompt/Notification architecture
+	gameEngine := app.NewGameEngineV2(
 		gameRepo,
 		playerRepo,
 		promptService,
@@ -134,7 +122,10 @@ func main() {
 		nightService,
 	)
 
-	log.Info().Msg("New architecture services initialized (ready for switchover)")
+	// Inject GameEngine into CommandHandler
+	commandHandler.SetGameEngine(gameEngine)
+
+	log.Info().Msg("New architecture services initialized")
 
 	// Initialize routes
 	routes.InitRoutes(r, &controllers.AppContext{

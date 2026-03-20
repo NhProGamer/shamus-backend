@@ -44,17 +44,5 @@ type PlayerRepository interface {
 	DeleteGamePlayers(ctx context.Context, gameID entities.GameID) error
 }
 
-// ActionRepository defines persistence operations for actions
-type ActionRepository interface {
-	// SaveAction persists an action to storage
-	SaveAction(ctx context.Context, action *entities.Action) error
-
-	// GetAction retrieves an action by ID
-	GetAction(ctx context.Context, actionID entities.ActionID) (*entities.Action, error)
-
-	// GetPendingActionsByPlayer retrieves all pending actions for a player
-	GetPendingActionsByPlayer(ctx context.Context, playerID entities.PlayerID) ([]*entities.Action, error)
-
-	// DeleteAction removes an action from storage
-	DeleteAction(ctx context.Context, actionID entities.ActionID) error
-}
+// NOTE: ActionRepository has been replaced by in-memory state in PromptService.
+// See internal/adapters/app/prompt_service.go for the new implementation.

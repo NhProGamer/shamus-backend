@@ -41,6 +41,11 @@ func (h *CommandHandler) SetGameEngine(ge ports.GameEngine) {
 	h.gameEngine = ge
 }
 
+// SetPlayerService sets the player service (for breaking circular dependency)
+func (h *CommandHandler) SetPlayerService(ps ports.PlayerService) {
+	h.playerService = ps
+}
+
 // CommandContext contains information about the command context
 type CommandContext struct {
 	GameID   entities.GameID
