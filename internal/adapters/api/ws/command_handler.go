@@ -1,0 +1,346 @@
+package ws
+
+import (
+	"encoding/json"
+	"errors"
+	"shamus-backend/internal/adapters/app"
+	"shamus-backend/internal/domain/constants"
+	"shamus-backend/internal/domain/entities"
+	"shamus-backend/internal/domain/entities/commands"
+	"shamus-backend/internal/domain/ports"
+	"shamus-backend/pkg/logger"
+	"time"
+)
+
+// CommandHandler handles client-initiated commands
+type CommandHandler struct {
+	gameService   ports.GameService
+	playerService ports.PlayerService
+	chatService   ports.ChatService
+	notifier      *app.NotificationService
+	gameEngine    ports.GameEngine
+}
+
+// NewCommandHandler creates a new CommandHandler
+func NewCommandHandler(
+	gameService ports.GameService,
+	playerService ports.PlayerService,
+	chatService ports.ChatService,
+	notifier *app.NotificationService,
+) *CommandHandler {
+	return &CommandHandler{
+		gameService:   gameService,
+		playerService: playerService,
+		chatService:   chatService,
+		notifier:      notifier,
+	}
+}
+
+// SetGameEngine sets the game engine (for breaking circular dependency)
+func (h *CommandHandler) SetGameEngine(ge ports.GameEngine) {
+	h.gameEngine = ge
+}
+
+// CommandContext contains information about the command context
+type CommandContext struct {
+	GameID   entities.GameID
+	PlayerID entities.PlayerID
+	Username string
+}
+
+// Handle processes a command from a client
+func (h *CommandHandler) Handle(ctx *CommandContext, cmd *entities.Command) error {
+	switch cmd.Type {
+	case entities.CmdSendChat:
+		return h.handleSendChat(ctx, cmd.Payload)
+	case entities.CmdUpdateSettings:
+		return h.handleUpdateSettings(ctx, cmd.Payload)
+	case entities.CmdStartGame:
+		return h.handleStartGame(ctx)
+	case entities.CmdLeaveGame:
+		return h.handleLeaveGame(ctx)
+	case entities.CmdKickPlayer:
+		return h.handleKickPlayer(ctx, cmd.Payload)
+	default:
+		return ErrUnknownCommand
+	}
+}
+
+// handleSendChat processes a chat message command
+func (h *CommandHandler) handleSendChat(ctx *CommandContext, payload json.RawMessage) error {
+	chatPayload, err := commands.ParseSendChatPayload(payload)
+	if err != nil {
+		logger.Get().Warn().Err(err).Msg("Failed to parse chat payload")
+		return ErrInvalidPayload
+	}
+
+	// Validate message length
+	if len(chatPayload.Message) < constants.MinChatMessageLength {
+		return ErrChatMessageEmpty
+	}
+	if len(chatPayload.Message) > constants.MaxChatMessageLength {
+		return ErrChatMessageTooLong
+	}
+
+	// Get game for phase info
+	game, err := h.gameService.GetGame(ctx.GameID)
+	if err != nil {
+		return err
+	}
+
+	// Get sender player info
+	sender, err := h.playerService.GetPlayer(ctx.PlayerID)
+	if err != nil {
+		return err
+	}
+
+	// Convert channel type
+	var chatChannel string
+	switch chatPayload.Channel {
+	case commands.ChatChannelVillage:
+		chatChannel = "village"
+	case commands.ChatChannelWerewolf:
+		chatChannel = "werewolf"
+	case commands.ChatChannelDead:
+		chatChannel = "dead"
+	default:
+		return ErrInvalidChatChannel
+	}
+
+	// Check if sender can send to this channel
+	// For now, we'll do a simplified check - the ChatService can be used for more complex rules
+	if !h.canSendToChannel(sender, chatChannel, game) {
+		return ErrCannotSendToChannel
+	}
+
+	// Get recipients
+	recipients, err := h.getChannelRecipients(ctx.GameID, chatChannel, game)
+	if err != nil {
+		return err
+	}
+
+	// Send chat notification to recipients
+	timestamp := time.Now().UnixMilli()
+	h.notifier.NotifyChatMessage(recipients, ctx.PlayerID, ctx.Username, chatPayload.Message, chatChannel, timestamp)
+
+	logger.Get().Info().
+		Str("gameID", string(ctx.GameID)).
+		Str("playerID", string(ctx.PlayerID)).
+		Str("channel", chatChannel).
+		Msg("Chat message sent")
+
+	return nil
+}
+
+// handleUpdateSettings processes a settings update command
+func (h *CommandHandler) handleUpdateSettings(ctx *CommandContext, payload json.RawMessage) error {
+	settingsPayload, err := commands.ParseUpdateSettingsPayload(payload)
+	if err != nil {
+		logger.Get().Warn().Err(err).Msg("Failed to parse settings payload")
+		return ErrInvalidPayload
+	}
+
+	// Build GameSettings from payload
+	newSettings := entities.GameSettings{
+		Roles: settingsPayload.Roles,
+	}
+
+	// Call service to update settings (validates host + game state + roles)
+	_, err = h.gameService.UpdateSettings(ctx.GameID, ctx.PlayerID, newSettings)
+	if err != nil {
+		return err
+	}
+
+	// Notify all players of new settings
+	// The notification could include the new settings, but for simplicity we just send game state
+	game, _ := h.gameService.GetGame(ctx.GameID)
+	if game != nil {
+		// Send a simplified settings notification
+		h.notifier.NotifyAll(ctx.GameID, entities.NotificationType("settings_changed"), map[string]interface{}{
+			"roles": game.Settings.Roles,
+		})
+	}
+
+	logger.Get().Info().
+		Str("gameID", string(ctx.GameID)).
+		Str("playerID", string(ctx.PlayerID)).
+		Msg("Game settings updated")
+
+	return nil
+}
+
+// handleStartGame processes a start game command
+func (h *CommandHandler) handleStartGame(ctx *CommandContext) error {
+	// Start the game
+	game, players, err := h.gameService.StartGame(ctx.GameID, ctx.PlayerID)
+	if err != nil {
+		return err
+	}
+
+	// Send role reveal to each player
+	for _, player := range players {
+		if player.Role == nil {
+			continue
+		}
+		roleName := string(player.Role.GetType())
+		description := player.Role.GetDescription()
+		h.notifier.NotifyRoleReveal(player.ID, player.Role.GetType(), roleName, description)
+	}
+
+	// Notify game started
+	h.notifier.NotifyGameStarted(ctx.GameID, game.Day)
+
+	// Start the game flow (triggers first night phase)
+	if h.gameEngine != nil {
+		if err := h.gameEngine.StartGameFlow(ctx.GameID); err != nil {
+			logger.Get().Error().
+				Str("gameID", string(ctx.GameID)).
+				Err(err).
+				Msg("Error starting game flow")
+		}
+	}
+
+	logger.Get().Info().
+		Str("gameID", string(ctx.GameID)).
+		Str("hostID", string(ctx.PlayerID)).
+		Msg("Game started")
+
+	return nil
+}
+
+// handleLeaveGame processes a leave game command
+func (h *CommandHandler) handleLeaveGame(ctx *CommandContext) error {
+	// This is handled by the WebSocket disconnect, but we can trigger it manually
+	// For now, we just acknowledge the intent - actual leave happens on disconnect
+	h.notifier.NotifyAck(ctx.PlayerID, "leave_game", true, "Disconnecting...")
+
+	logger.Get().Info().
+		Str("gameID", string(ctx.GameID)).
+		Str("playerID", string(ctx.PlayerID)).
+		Msg("Player requested to leave")
+
+	return nil
+}
+
+// handleKickPlayer processes a kick player command
+func (h *CommandHandler) handleKickPlayer(ctx *CommandContext, payload json.RawMessage) error {
+	kickPayload, err := commands.ParseKickPlayerPayload(payload)
+	if err != nil {
+		logger.Get().Warn().Err(err).Msg("Failed to parse kick payload")
+		return ErrInvalidPayload
+	}
+
+	// Get game to verify host
+	game, err := h.gameService.GetGame(ctx.GameID)
+	if err != nil {
+		return err
+	}
+
+	// Only host can kick
+	if game.HostID != ctx.PlayerID {
+		return ErrNotHost
+	}
+
+	// Can't kick yourself
+	if kickPayload.PlayerID == ctx.PlayerID {
+		return ErrCannotKickSelf
+	}
+
+	// Can only kick in waiting state
+	if game.Status != entities.GameStatusWaiting {
+		return ErrGameNotWaiting
+	}
+
+	// Get player to kick for username
+	playerToKick, err := h.playerService.GetPlayer(kickPayload.PlayerID)
+	if err != nil {
+		return err
+	}
+
+	// Notify the kicked player
+	h.notifier.NotifyError(kickPayload.PlayerID, "KICKED", "You have been kicked from the game", "")
+
+	// Notify others
+	reason := kickPayload.Reason
+	if reason == "" {
+		reason = "kicked"
+	}
+	h.notifier.NotifyPlayerLeft(ctx.GameID, kickPayload.PlayerID, playerToKick.Username, reason)
+
+	logger.Get().Info().
+		Str("gameID", string(ctx.GameID)).
+		Str("hostID", string(ctx.PlayerID)).
+		Str("kickedID", string(kickPayload.PlayerID)).
+		Msg("Player kicked")
+
+	return nil
+}
+
+// --- Helper methods ---
+
+func (h *CommandHandler) canSendToChannel(sender *entities.Player, channel string, game *entities.Game) bool {
+	// Dead players can only send to dead channel
+	if !sender.IsAlive {
+		return channel == "dead"
+	}
+
+	// During night, only werewolves can use werewolf channel
+	if channel == "werewolf" {
+		if game.Phase != entities.PhaseNight {
+			return false
+		}
+		if sender.Role == nil || sender.Role.GetType() != entities.RoleWerewolf {
+			return false
+		}
+		return true
+	}
+
+	// Village channel during day/vote
+	if channel == "village" {
+		return game.Phase == entities.PhaseDay || game.Phase == entities.PhaseVote || game.Status == entities.GameStatusWaiting
+	}
+
+	return false
+}
+
+func (h *CommandHandler) getChannelRecipients(gameID entities.GameID, channel string, game *entities.Game) ([]entities.PlayerID, error) {
+	players, err := h.playerService.GetGamePlayers(gameID)
+	if err != nil {
+		return nil, err
+	}
+
+	var recipients []entities.PlayerID
+	for _, p := range players {
+		switch channel {
+		case "village":
+			// All players can receive village messages
+			recipients = append(recipients, p.ID)
+		case "werewolf":
+			// Only werewolves receive werewolf messages
+			if p.Role != nil && p.Role.GetType() == entities.RoleWerewolf {
+				recipients = append(recipients, p.ID)
+			}
+		case "dead":
+			// Only dead players receive dead messages
+			if !p.IsAlive {
+				recipients = append(recipients, p.ID)
+			}
+		}
+	}
+
+	return recipients, nil
+}
+
+// --- Errors ---
+
+var (
+	ErrUnknownCommand      = errors.New("unknown command type")
+	ErrInvalidPayload      = errors.New("invalid payload format")
+	ErrChatMessageEmpty    = errors.New("chat message cannot be empty")
+	ErrChatMessageTooLong  = errors.New("chat message is too long")
+	ErrInvalidChatChannel  = errors.New("invalid chat channel")
+	ErrCannotSendToChannel = errors.New("cannot send to this channel")
+	ErrNotHost             = errors.New("only the host can perform this action")
+	ErrCannotKickSelf      = errors.New("cannot kick yourself")
+	ErrGameNotWaiting      = errors.New("game is not in waiting state")
+)
