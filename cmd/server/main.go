@@ -108,12 +108,33 @@ func main() {
 	)
 	wsHandler.SetGameEngine(gameEngine)
 	wsHandler.SetActionService(actionService)
-	
+
 	// Complete circular dependency: inject ActionService into GameEngine
 	// This will automatically register action callbacks (witch, seer, etc.)
 	gameEngine.SetActionService(actionService)
 
-	log.Info().Msg("Game engine services initialized")
+	log.Info().Msg("Game engine services initialized (legacy)")
+
+	// --- NEW ARCHITECTURE (Notification/Prompt/Command) ---
+	// These services are created but not yet wired to the main handler.
+	// To enable the new architecture, switch WebsocketHandler to ws.Handler in AppContext.
+
+	// NotificationService provides typed notifications
+	notificationService := app.NewNotificationService(wsHandler, wsHandler, playerRepo)
+
+	// PromptService handles prompts with timeouts and group voting
+	promptService := app.NewPromptService(wsHandler, notificationService, playerRepo)
+
+	// GameEngineV2 uses the new Prompt/Notification architecture
+	_ = app.NewGameEngineV2(
+		gameRepo,
+		playerRepo,
+		promptService,
+		notificationService,
+		nightService,
+	)
+
+	log.Info().Msg("New architecture services initialized (ready for switchover)")
 
 	// Initialize routes
 	routes.InitRoutes(r, &controllers.AppContext{

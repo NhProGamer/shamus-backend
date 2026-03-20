@@ -123,3 +123,8 @@ var (
 	ErrActionWrongPlayer      = New("ACTION_WRONG_PLAYER", "action does not belong to this player")
 	ErrActionCancelled        = New("ACTION_CANCELLED", "action was cancelled")
 )
+
+// System errors
+var (
+	ErrNotImplemented = New("NOT_IMPLEMENTED", "feature not yet implemented")
+)
