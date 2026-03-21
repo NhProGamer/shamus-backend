@@ -2,217 +2,346 @@
 
 ## Project Overview
 
-**Shamus Backend** is a Werewolf game backend built in Go with a clean, layered architecture using Hexagonal (Ports & Adapters) pattern. The project implements a real-time multiplayer game engine with WebSocket support, role-based visibility, voting mechanics, and night phase actions.
+**Shamus Backend** is a Werewolf game backend built in Go with a clean Hexagonal (Ports & Adapters) architecture. The project implements a real-time multiplayer game engine with WebSocket support, role-based visibility, voting mechanics, and night phase actions.
+
+## Directory Structure
+
+```
+shamus-backend/
+├── cmd/server/main.go                    # Entry point, DI wiring
+├── internal/
+│   ├── domain/                           # Core business logic (NO external deps)
+│   │   ├── entities/                     # Game, Player, Role, Vote, Prompt, Command, Notification
+│   │   │   ├── commands/                 # Command payloads (SendChat, KickPlayer, etc.)
+│   │   │   ├── prompts/                  # Prompt payloads and responses
+│   │   │   ├── roles/                    # Role implementations (Seer, Werewolf, etc.)
+│   │   │   └── abilities/                # Ability implementations (Heal, Poison, etc.)
+│   │   ├── ports/                        # Interface contracts (services, repositories)
+│   │   ├── errors/                       # Structured AppError types
+│   │   ├── helpers/                      # Game logic helpers, sanitization
+│   │   └── constants/                    # Game constants (timers, limits)
+│   ├── application/                      # Use cases and orchestration
+│   │   ├── services/                     # Service implementations
+│   │   │   ├── game_service.go
+│   │   │   ├── player_service.go
+│   │   │   ├── vote_service.go
+│   │   │   ├── night_service.go
+│   │   │   ├── prompt_service.go         # Interactive prompts with timeouts
+│   │   │   ├── notification_service.go   # Server-to-client notifications
+│   │   │   ├── timer_service.go
+│   │   │   ├── visibility_service.go
+│   │   │   └── chat_service.go
+│   │   └── orchestration/                # Game flow orchestrator
+│   │       └── game_engine_v2.go
+│   ├── adapters/                         # Interface implementations
+│   │   ├── primary/                      # Driving adapters (incoming)
+│   │   │   ├── http/
+│   │   │   │   ├── controllers/          # HTTP handlers
+│   │   │   │   ├── routes/               # URL routing
+│   │   │   │   └── middlewares/          # OIDC auth middleware
+│   │   │   └── websocket/
+│   │   │       ├── handler.go            # WebSocket lifecycle
+│   │   │       ├── command_handler.go    # Client command processing
+│   │   │       ├── session_manager.go    # Player-session mapping
+│   │   │       └── session_helpers.go    # Safe type assertions
+│   │   └── secondary/                    # Driven adapters (outgoing)
+│   │       └── redis/
+│   │           ├── game_repository.go
+│   │           ├── player_repository.go
+│   │           └── vote_repository.go
+│   └── infrastructure/
+│       └── config/                       # YAML config loading
+├── docs/
+│   └── api/                              # API documentation
+│       ├── openapi.yaml                  # REST API spec (OpenAPI 3.1)
+│       ├── asyncapi.yaml                 # WebSocket API spec (AsyncAPI 2.6)
+│       ├── swagger-ui.html               # Swagger UI viewer
+│       └── asyncapi-ui.html              # AsyncAPI viewer
+└── pkg/
+    ├── logger/                           # Zerolog wrapper
+    └── utils/                            # Shared utilities
+```
 
 ## Architecture Layers
 
-### 1. **Domain Layer** (`internal/domain/`)
-The core business logic and rules of the game - completely independent of frameworks and infrastructure.
+### 1. Domain Layer (`internal/domain/`)
 
-#### Key Components:
+The core business logic - completely independent of frameworks and infrastructure.
 
-**Entities** (`entities/`):
-- `Game`: Represents a game instance with ID, status (waiting/active/ended), phase, day counter, players list, host ID, and role settings
-- `Player`: Individual player with ID, username, role assignment, alive status, vote, and connection state
-- `Role`: Interface implemented by RoleType (Seer, Villager, Werewolf, Witch) with abilities
-- `Vote`: Voting system with eligible voters, targets, ballots, and resolution logic
-- `Event`: Generic event structure for WebSocket messages (channels: game_event, conn_event, settings_event, timer_event)
-- `NightPhase`: Enum tracking night sub-phases (seer -> werewolf -> witch -> end)
+#### Entities (`entities/`)
 
-**Roles** (`entities/roles/`):
-- Werewolf, Villager, Seer, Witch implementations
-- Each role has clan affiliation, abilities, priority, and name/description
-
-**Abilities** (`entities/abilities/`):
-- Seer: Vision ability to see target's role
-- Werewolf: Kill ability
-- Witch: Heal/Poison abilities (only once each per game)
-
-**Events** (`entities/events/`):
-- Structured domain events for: Day start, Night start, Votes, Deaths, Chat messages, Connection/Disconnection, Role reveals, Timers, Game actions, etc.
-
-**Ports** (`ports/`):
-- Interfaces defining contracts between domain and adapters
-- Repositories: GameRepository, PlayerRepository
-- Services: GameService, PlayerService, VisibilityService, ChatService, TimerService, VoteService, NightService, GameEngine
-- Broadcasting: Broadcaster, PlayerSender, GameMessenger
-
-**Constants** (`constants/`):
-- Game rules: MinPlayers=4, MaxPlayers=24
-- Timeouts: Reconnection=2min, Server read/write=15s
-- Phase durations: Day=3min, Vote=2min, Seer=30s, Werewolf=1min, Witch=45s
-- Redis TTLs: 24 hours for games/players/votes/night state
-
-**Errors** (`errors/`):
-- Structured AppError type with code and message
-- Comprehensive error definitions for game, player, auth, validation, settings, actions, and voting errors
-
-### 2. **Application Layer** (`internal/adapters/app/`)
-Implements business logic/use cases using domain entities and ports.
-
-#### Services:
-
-**GameService**:
-- CreateNewGame: Creates new game with default 4V 2W 1S 1W configuration
-- JoinGame: Adds player to existing game
-- GetGame: Retrieves game state
-- UpdateSettings: Only host can update roles (requires waiting status)
-- StartGame: Validates game state and transitions to active
-
-**PlayerService**:
-- HandleConnect: Manages player connection with reconnection logic (2-min timeout timer)
-- HandleDisconnect: Marks player as disconnected
-- IsPlayerConnected: Checks active WebSocket session
-- CleanupGamePlayers: Removes all players when game ends
-
-**GameEngine** (Orchestrator):
-- StartGameFlow: Initiates first night phase
-- Handles all action processing: Seer actions, Werewolf votes, Witch actions, Village votes
-- Manages phase transitions and win condition checks
-- Integrated timer expiry callback
-
-**VisibilityService**:
-- Filters player information based on viewer's role and game phase
-- Rules: Own role always visible, werewolves see each other, dead roles reveal at day
-
-**ChatService**:
-- Validates message permissions per channel/phase/role
-- Determines channel recipients
-
-**TimerService**:
-- Manages phase and role timers
-- Supports timer expiry callbacks for phase transitions
-
-**VoteService**:
-- Creates village and werewolf votes
-- Records ballots and resolves votes
-- Handles tie detection and elimination logic
-
-**NightService**:
-- Manages night phase sub-phases (seer -> werewolf -> witch)
-- Records role actions and pending deaths
-- Determines deaths from werewolf victim + witch actions
-
-### 3. **Infrastructure Adapters** (`internal/adapters/`)
-
-#### API Adapters (`api/ws/`):
-
-**WebSocketHandler**:
-- Implements Broadcaster and PlayerSender interfaces
-- Manages player-to-session mapping and room broadcasts
-- Handles WebSocket lifecycle: connect, disconnect, message routing
-- Error code translation
-- Event routing to appropriate handlers
-- Circular dependency resolution: Set PlayerService and GameEngine after creation
-
-**Event Service** (WebSocket):
-- Provides SendToPlayer and BroadcastToGame implementations
-
-#### Infrastructure Adapters (`infra/`):
-
-**RedisGameRepo**:
-- Persists games to Redis with 24h TTL
-- Key format: "game:{gameID}"
-
-**RedisPlayerRepo**:
-- Persists players to Redis with 24h TTL
-- Key format: "player:{playerID}"
-- Maintains game player sets: "game:{gameID}:player_ids"
-- Batch save support via Redis pipeline
-
-**VoteRepository**:
-- Stores active votes in memory (concurrent-safe)
-- Keyed by game ID
-
-### 4. **Infrastructure Layer** (`internal/infrastructure/`)
-
-**Config**:
-- YAML-based configuration for Server, OIDC, Redis, Logger settings
-- Validation and URL parsing for OIDC issuer and public URLs
-
-**Controllers**:
-- REST endpoints for game creation and static files
-- OIDC authentication middleware integration
-
-**Routes**:
-- Health check endpoints: /health, /ready, /live
-- Protected routes under /app with OIDC middleware
-- WebSocket endpoint: /app/ws/{gameID}
-- API routes: /app/api/v1/game
-
-**Middlewares**:
-- OIDC authentication handler
-
-## Component Integration & Data Flow
-
-### Dependency Injection (main.go)
-
-```
-Redis → Repositories (GameRepo, PlayerRepo, VoteRepo)
-         ↓
-    → GameService (uses repos)
-    → PlayerService (uses repos)
-    → VisibilityService, ChatService
-    ↓
-WebSocketHandler (created first without circular deps)
-    ↓ SetPlayerService() → completes wiring
-    ↓
-TimerService, VoteService, NightService (use broadcaster)
-    ↓
-GameEngine (uses all above)
-    ↓ SetGameEngine() → completes wiring
-    ↓
-HTTP Server with Routes and Controllers
+**Game** - Game state container:
+```go
+type Game struct {
+    ID       GameID       // UUID
+    Status   GameStatus   // waiting | active | ended
+    Phase    GamePhase    // start | day | night | vote
+    Day      int          // Current day number
+    Players  []PlayerID   // Player IDs in game
+    HostID   PlayerID     // Game creator
+    Settings GameSettings // Role configuration
+}
 ```
 
-### Game Flow
+**Player** - Individual player state:
+```go
+type Player struct {
+    ID              PlayerID
+    Username        string
+    Role            Role            // Interface (not serialized)
+    RoleType        *RoleType       // For JSON serialization
+    IsAlive         bool
+    VotedFor        *PlayerID
+    ConnectionState ConnectionState // connected | disconnected | inactive
+    GameID          *GameID
+}
+```
 
-1. **Create Game**: Player creates game → GameService creates with waiting status
-2. **Join Game**: Players join before game starts
-3. **Update Settings**: Host configures roles (validation ensures balance)
-4. **Start Game**: Host starts → Role assignment via shuffle → GameEngine.StartGameFlow
-5. **Night Phase**:
-   - Seer acts (vision)
-   - Werewolves vote (kill selection)
-   - Witch acts (heal/poison)
-   - Deaths resolved
-6. **Day Phase**: All players discuss
-7. **Vote Phase**: All alive players vote to eliminate
-8. **Win Condition**: Check after each phase
+**Vote** - Voting system:
+```go
+type Vote struct {
+    ID              string
+    Type            VoteType        // village | werewolf
+    Status          VoteStatus      // pending | active | resolved
+    EligibleVoters  []PlayerID
+    EligibleTargets []PlayerID
+    Ballots         map[PlayerID]*PlayerID
+    AllowAbstain    bool
+    Result          *VoteResult
+}
 
-### Broadcasting Pattern
+// Constructor validates voters
+func NewVote(...) (*Vote, error)  // Returns error if no eligible voters
+```
 
-Services emit events through Broadcaster/PlayerSender interfaces (raw bytes):
-- Broadcaster: BroadcastToGame(gameID, payload) → WebSocketHandler → rooms
-- PlayerSender: SendToPlayer(playerID, payload) → WebSocketHandler → player session
-- All services use JSON serialization
+**Prompt** - Interactive requests with timeout:
+```go
+type Prompt struct {
+    ID          PromptID
+    Type        PromptType      // select_player | select_option | vote | confirm
+    Context     string          // e.g., "seer_vision", "werewolf_vote"
+    GameID      GameID
+    PlayerID    PlayerID
+    Payload     json.RawMessage
+    Status      PromptStatus    // pending | answered | expired | cancelled
+    ExpiresAt   time.Time
+    AllowChange bool            // Can re-submit response
+    CanSkip     bool
+    GroupID     *GroupID        // For group votes
+}
+```
 
-### Message Routing (WebSocket)
+**Command** - Client-to-server commands:
+```go
+type Command struct {
+    Channel Channel         // "command"
+    Type    CommandType     // send_chat | update_settings | start_game | leave_game | kick_player
+    Payload json.RawMessage
+}
+```
 
-1. Client sends JSON event with channel and type
-2. WebSocketHandler routes based on channel:
-   - conn_event → HandleConnect/Disconnect
-   - game_event → GameService/GameEngine
-   - settings_event → SettingsHandlers
-   - timer_event → TimerService
-3. Responses sent back to player/room
+**Notification** - Server-to-client notifications:
+```go
+type Notification struct {
+    Channel Channel          // "notification"
+    Type    NotificationType // 20+ types: game_state, player_joined, chat_message, etc.
+    Payload json.RawMessage
+}
+```
+
+**Channel** - WebSocket message channels:
+```go
+const (
+    ChannelNotification Channel = "notification"  // Server → Client (info)
+    ChannelPrompt       Channel = "prompt"        // Server → Client (action required)
+    ChannelResponse     Channel = "response"      // Client → Server (prompt answer)
+    ChannelCommand      Channel = "command"       // Client → Server (player action)
+)
+```
+
+**Role Interface**:
+```go
+type Role interface {
+    GetType() RoleType
+    GetName() string
+    GetDescription() string
+    GetClans() []Clan
+    GetPriority() Priority
+    GetAbilities() *[]Ability
+}
+```
+
+**Ability Interface**:
+```go
+type Ability interface {
+    GetName() string
+    GetDescription() string
+    CanUse(game *Game, player *Player) bool
+    GetConsumptions() *uint8
+    TryConsume() bool  // Returns false if no consumptions remaining
+}
+```
+
+#### Ports (`ports/`)
+
+Interface contracts between domain and adapters:
+
+**Repository Ports**:
+- `GameRepository`: SaveGame, GetGame, DeleteGame
+- `PlayerRepository`: SavePlayer, GetPlayer, GetPlayersByGame, etc.
+- `VoteRepository`: SaveVote, GetVote, DeleteVote
+
+**Service Ports**:
+- `GameService`: CreateNewGame, JoinGame, GetGame, UpdateSettings, StartGame
+- `PlayerService`: HandleConnect, HandleDisconnect, GetPlayer, GetGamePlayers
+- `GameEngine`: StartGameFlow, HandleSeerAction, HandleWerewolfVote, HandleWitchAction, HandleVillageVote
+- `VoteService`: StartVillageVote, StartWerewolfVote, CastVote, ResolveVote
+- `NightService`: StartNight, RecordSeerAction, RecordWerewolfVictim, RecordWitchAction
+- `PromptService`: CreatePrompt, RespondToPrompt, CreateGroupVote
+- `NotificationService`: NotifyPlayer, NotifyAll, NotifyPlayerJoined, NotifyChatMessage, etc.
+- `TimerService`: StartPhaseTimer, CancelTimer, GetRemainingTime
+- `VisibilityService`: BuildPlayersDetailsForPlayer
+- `ChatService`: CanSendToChannel, GetChannelRecipients
+
+**Broadcasting Ports**:
+- `PlayerSender`: SendToPlayer(playerID, payload)
+- `Broadcaster`: BroadcastToGame(gameID, payload)
+- `NotificationService`: High-level notification methods
+- `PlayerDisconnecter`: DisconnectPlayer (for kicks)
+
+### 2. Application Layer (`internal/application/`)
+
+Implements business logic using domain entities and ports.
+
+#### Services (`services/`)
+
+**GameService**: Game lifecycle management
+- CreateNewGame: Default config (4V, 2W, 1S, 1W)
+- JoinGame: Add player to waiting game
+- UpdateSettings: Host-only, validates role configuration
+- StartGame: Validates and assigns roles
+
+**PlayerService**: Player connection management
+- HandleConnect: Join game or reconnect (2-min timeout)
+- HandleDisconnect: Mark disconnected, start timeout timer
+- Tracks connection state
+
+**PromptService**: Interactive prompts with timeouts
+- CreatePrompt: Send prompt to player
+- CreateGroupVote: Werewolf/village group votes
+- RespondToPrompt: Process player response
+- Manages timers and expiry
+
+**NotificationService**: Server-to-client notifications
+- High-level methods: NotifyPlayerJoined, NotifyChatMessage, NotifyVoteResult, etc.
+- Uses PlayerSender and Broadcaster interfaces
+
+**VoteService**: Voting mechanics
+- StartVillageVote, StartWerewolfVote
+- CastVote, ResolveVote
+- Tie detection
+
+**NightService**: Night phase coordination
+- Sequential sub-phases: Seer → Werewolf → Witch
+- Tracks actions and pending deaths
+
+#### Orchestration (`orchestration/`)
+
+**GameEngineV2**: Game flow orchestrator
+- StartGameFlow: Initiates first night
+- Phase transitions
+- Win condition checks
+- Timer expiry callbacks
+- Coordinates all services
+
+### 3. Adapters Layer (`internal/adapters/`)
+
+#### Primary Adapters (Driving)
+
+**HTTP** (`primary/http/`):
+- `controllers/`: REST API handlers (PostGameHandler, HealthHandler)
+- `routes/`: URL routing, documentation routes in debug mode
+- `middlewares/`: OIDC authentication
+
+**WebSocket** (`primary/websocket/`):
+- `handler.go`: WebSocket lifecycle (connect, disconnect, message routing)
+- `command_handler.go`: Processes client commands (chat, settings, kick, etc.)
+- `session_manager.go`: Player-session mapping, room broadcasts
+- `session_helpers.go`: Safe type assertions for session data
+
+**WebSocket Message Flow**:
+```
+Client → WebSocket Message
+    ↓
+Handler.onMessage()
+    ├─ Parse channel from JSON
+    ├─ If "command" → CommandHandler.Handle()
+    │   ├─ Validate player belongs to game
+    │   ├─ Route by command type
+    │   └─ Return ack/error
+    └─ If "response" → PromptService.RespondToPrompt()
+        └─ Process prompt response
+
+Server → Client
+    ├─ NotificationService.NotifyX() → Notification message
+    └─ PromptService.CreatePrompt() → Prompt message
+```
+
+#### Secondary Adapters (Driven)
+
+**Redis** (`secondary/redis/`):
+- `game_repository.go`: Game persistence (24h TTL)
+- `player_repository.go`: Player persistence, game player sets
+- `vote_repository.go`: Vote persistence
+
+### 4. Infrastructure Layer (`internal/infrastructure/`)
+
+**Config** (`config/`):
+- YAML configuration loading
+- Server, OIDC, Redis, Logger settings
+- `Debug` flag for development features
 
 ## Key Design Patterns
 
-1. **Hexagonal Architecture**: Domain isolated from infrastructure via ports/adapters
-2. **Dependency Injection**: Explicit wiring in main.go with circular dependency breaking
-3. **Interface Segregation**: Small focused interfaces (Broadcaster, PlayerSender)
-4. **Error Handling**: Structured AppError with codes for consistent client handling
-5. **Event-Driven**: Services emit events to broadcaster, WebSocket handler sends to clients
-6. **State Management**: Redis as single source of truth for game/player state
-7. **Role Interface**: Polymorphic role behavior with consistent interface
+1. **Hexagonal Architecture**: Domain isolated from infrastructure via ports
+2. **Dependency Injection**: Explicit wiring in main.go
+3. **Interface Segregation**: Small interfaces (PlayerSender, Broadcaster)
+4. **Command Pattern**: Commands with typed payloads
+5. **Observer Pattern**: Notifications broadcast to subscribers
+6. **Repository Pattern**: Persistence abstracted behind interfaces
+7. **Orchestrator Pattern**: GameEngine coordinates services
 
-## Critical Integration Points
+## Circular Dependency Resolution
 
-1. **GameEngine ↔ GameService**: Game creation/state management
-2. **GameEngine ↔ VoteService**: Vote creation and resolution
-3. **GameEngine ↔ NightService**: Night phase orchestration
-4. **GameEngine ↔ TimerService**: Phase transitions on timer expiry
-5. **PlayerService ↔ WebSocketHandler**: Connection state tracking
-6. **WebSocketHandler ↔ All Services**: Event distribution and response sending
-7. **Repositories ↔ Services**: Persistent state storage and retrieval
+```go
+// 1. Create WebSocketHandler without circular deps
+wsHandler := NewHandler(melody, sessions, promptService, commandHandler, notifier, gameService)
+
+// 2. Create PlayerService
+playerService := NewPlayerService(playerRepo, gameRepo)
+
+// 3. Complete wiring
+wsHandler.SetPlayerService(playerService)
+commandHandler.SetPlayerService(playerService)
+commandHandler.SetGameEngine(gameEngine)
+commandHandler.SetDisconnecter(wsHandler)
+```
+
+## Component Integration
+
+```
+HTTP Request → Controller → Service → Repository → Redis
+                              ↓
+WebSocket ← NotificationService ← GameEngine
+    ↓
+CommandHandler → Service → Repository
+    ↓
+PromptService → Player (prompt) → Response → Service
+```
+
+## API Documentation
+
+In debug mode (`config.Debug: true`):
+- `/docs/rest` - Swagger UI (OpenAPI 3.1)
+- `/docs/ws` - AsyncAPI UI (AsyncAPI 2.6)
+- `/docs/api/*` - Raw spec files

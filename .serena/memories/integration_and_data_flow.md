@@ -2,419 +2,506 @@
 
 ## Initialization Flow (main.go)
 
-### 1. Configuration Loading
+### Phase 1: Configuration & Infrastructure
 ```
 Config.LoadConfig() → YAML file
-  ├─ Server: host, port, OIDC config
-  ├─ OIDC: issuer, client_id, secret, scopes
-  ├─ Redis: host, port, password, db
-  └─ Logger: level, pretty output
-```
+    ├─ Server: host, port, public_url
+    ├─ OIDC: issuer, client_id, secret, scopes
+    ├─ Redis: host, port, password, db
+    ├─ Logger: level, pretty
+    └─ Debug: bool (enables /docs routes)
 
-### 2. Infrastructure Setup
-```
-Logger initialization → Zerolog config
-  ↓
+Logger initialization → Zerolog
 Gin router + Melody WebSocket manager
-  ↓
-OIDC provider init (coreos/go-oidc)
-  ↓
+OIDC provider init
 Redis client → Ping test
 ```
 
-### 3. Dependency Injection Phase 1: Repositories
+### Phase 2: Repositories
 ```
 Redis client
-  ├─→ RedisGameRepo (GameRepository)
-  ├─→ RedisPlayerRepo (PlayerRepository)
-  └─→ VoteRepository (in-memory)
+    ├─→ RedisGameRepo
+    ├─→ RedisPlayerRepo
+    └─→ RedisVoteRepo
 ```
 
-### 4. Dependency Injection Phase 2: Services
+### Phase 3: Core Services
 ```
 Repositories
-  ├─→ GameService(gameRepo, playerRepo)
-  ├─→ PlayerService(playerRepo, gameRepo, nil) [connChecker set later]
-  ├─→ VisibilityService()
-  └─→ ChatService()
+    ├─→ GameService(gameRepo, playerRepo)
+    ├─→ PlayerService(playerRepo, gameRepo)  // connChecker set later
+    ├─→ VisibilityService()
+    └─→ ChatService()
 ```
 
-### 5. Dependency Injection Phase 3: WebSocket & Circular Dep Breaking
+### Phase 4: WebSocket Components
 ```
-Create WebSocketHandler without circular deps:
-  NewWebSocketHandler(melody, gameService, visibilityService, chatService)
-    ├─ playerService = nil [SET LATER]
-    └─ gameEngine = nil [SET LATER]
-  ↓
-Complete wiring:
-  wsHandler.SetPlayerService(playerService)
-  ↓
-  playerService.connChecker now set to wsHandler
+SessionManager(melody)
+
+NotificationService(sessionManager)
+
+CommandHandler(gameService, playerService, chatService, notifier)
+    ├─ disconnecter = nil  [SET LATER]
+    ├─ gameEngine = nil    [SET LATER]
+    └─ playerService set
+
+WebSocketHandler(melody, sessions, promptService, commandHandler, notifier, gameService)
+    └─ playerService = nil [SET LATER]
 ```
 
-### 6. Dependency Injection Phase 4: Game Flow Services
+### Phase 5: Complete Wiring
 ```
-TimerService(wsHandler) [uses Broadcaster]
-VoteService(voteRepo, wsHandler, wsHandler) [uses Broadcaster & PlayerSender]
-NightService(wsHandler, voteService) [uses Broadcaster]
-  ↓
-GameEngine(gameRepo, playerRepo, timerService, voteService, nightService, wsHandler, wsHandler)
-  ├─ Sets up timer expiry callbacks
-  └─ wsHandler.SetGameEngine(gameEngine)
+wsHandler.SetPlayerService(playerService)
+playerService.SetConnectionChecker(wsHandler)
+commandHandler.SetDisconnecter(wsHandler)
 ```
 
-### 7. HTTP Server Setup
+### Phase 6: Game Flow Services
 ```
-Routes.InitRoutes(router, AppContext{config, gameService, wsHandler, oidcProvider}, redis)
-  ├─ Health endpoints: /health, /ready, /live (no auth)
-  ├─ Static files: /app/ (OIDC protected)
-  ├─ WebSocket: /app/ws/{gameID} (OIDC protected)
-  └─ API: /app/api/v1/game (OIDC protected)
+TimerService(broadcaster)
+VoteService(voteRepo, broadcaster, playerSender)
+NightService(broadcaster, voteService, playerRepo)
+
+GameEngineV2(gameRepo, playerRepo, timerService, voteService, nightService, promptService, notifier, playerSender)
+
+commandHandler.SetGameEngine(gameEngine)
+```
+
+### Phase 7: HTTP Server
+```
+Routes.InitRoutes(router, AppContext, redis)
+    ├─ Health: /health, /ready, /live
+    ├─ Docs (debug only): /docs/rest, /docs/ws, /docs/api/*
+    ├─ Protected (/app with OIDC):
+    │   ├─ Static files
+    │   ├─ WebSocket: /ws/:gameID
+    │   └─ API: /api/v1/game
+    └─ Server.Run()
+```
+
+## WebSocket Message Flow
+
+### Channel Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    WebSocket Connection                      │
+├─────────────────────────────────────────────────────────────┤
+│  Server → Client                                             │
+│  ├─ notification: Informational updates (no response)       │
+│  │   └─ Types: game_state, player_joined, chat_message...   │
+│  └─ prompt: Interactive requests (response expected)         │
+│      └─ Types: vote, select_player, select_option, confirm  │
+├─────────────────────────────────────────────────────────────┤
+│  Client → Server                                             │
+│  ├─ command: Player-initiated actions                        │
+│  │   └─ Types: send_chat, update_settings, start_game...    │
+│  └─ response: Answers to prompts                             │
+│      └─ Contains: promptId, response payload                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Message Routing (Handler.onMessage)
+
+```
+Client WebSocket Message (JSON)
+    │
+    ▼
+Parse channel field
+    │
+    ├─── channel: "command" ──────────────────────┐
+    │                                              │
+    │    CommandHandler.Handle(cmdCtx, cmd)        │
+    │        │                                     │
+    │        ├─ Validate player belongs to game    │
+    │        │   (player.GameID == cmdCtx.GameID)  │
+    │        │                                     │
+    │        ├─ Route by cmd.Type:                 │
+    │        │   ├─ send_chat → handleSendChat()   │
+    │        │   │   └─ Sanitize message           │
+    │        │   │   └─ Check channel permissions  │
+    │        │   │   └─ NotifyChatMessage()        │
+    │        │   ├─ update_settings → handleUpdateSettings()
+    │        │   ├─ start_game → handleStartGame() │
+    │        │   ├─ leave_game → handleLeaveGame() │
+    │        │   └─ kick_player → handleKickPlayer()
+    │        │                                     │
+    │        └─ Return ack or error notification   │
+    │                                              │
+    └─── channel: "response" ─────────────────────┐
+                                                   │
+         PromptService.RespondToPrompt()           │
+             │                                     │
+             ├─ Validate prompt exists & pending   │
+             ├─ Validate player matches            │
+             ├─ Validate not expired               │
+             ├─ Process response                   │
+             │   └─ For group votes: update state  │
+             └─ Return ack or error                │
 ```
 
 ## Data Flow: Create Game
 
 ```
 Client → HTTP POST /app/api/v1/game
-  ↓
-Controllers.PostGameHandler
-  ├─ Extract userID from context (from OIDC middleware)
-  └─ gameService.CreateNewGame(playerID)
-    ├─ Generate gameID (UUID)
-    ├─ Create Game{
-    │   ID: gameID,
-    │   Status: waiting,
-    │   Phase: start,
-    │   Players: [],
-    │   HostID: playerID,
-    │   Settings: {4V, 2W, 1S, 1W}
-    │ }
-    └─ gameRepo.SaveGame(context, game)
-      └─ Redis SET "game:{gameID}" with 24h TTL
-  ↓
+    │
+    ▼
+controllers.PostGameHandler
+    ├─ Extract userID from OIDC context
+    └─ gameService.CreateNewGame(ctx, playerID)
+        ├─ Generate gameID (UUID)
+        ├─ Create Game{
+        │   Status: waiting,
+        │   Phase: start,
+        │   Settings: {4V, 2W, 1S, 1W}
+        │ }
+        └─ gameRepo.SaveGame() → Redis
+    │
+    ▼
 HTTP 200 {gameID: "..."}
-  ↓
-Client connects via WebSocket to /app/ws/{gameID}
 ```
 
-## Data Flow: Join Game
+## Data Flow: Player Connect (WebSocket)
 
 ```
-Client → WebSocket Connect /app/ws/{gameID}
-  ↓
-WebSocketHandler.HandleWS (Melody connect event)
-  ├─ Extract gameID and playerID from context
-  ├─ playerService.HandleConnect(gameID, playerID, username)
-  │  ├─ Check not already connected
-  │  ├─ Get game from gameRepo
-  │  ├─ Check game status != ended
-  │  ├─ Check if player exists
-  │  │  ├─ If NOT: Create new Player (only if game.status == waiting)
-  │  │  │   ├─ playerRepo.SavePlayer()
-  │  │  │   ├─ playerRepo.AddPlayerToGame()
-  │  │  │   └─ return player, false (not reconnect)
-  │  │  └─ If YES: Mark as connected (clear reconnect timer)
-  │  │     └─ return player, true (reconnect)
-  │  └─ If 2-min disconnected timeout: mark inactive
-  │
-  ├─ Register player session: wsHandler.playerSessions[playerID] = session
-  ├─ Register in room: wsHandler.rooms[gameID] = append(..., session)
-  │
-  └─ Broadcast connection event to room
-    └─ BroadcastToGame(gameID, Event{
-         channel: "conn_event",
-         type: "connection"
-         data: {playerID, username, state: "connected"}
-       })
+Client → WebSocket /app/ws/:gameID
+    │
+    ▼
+Handler.onConnect(session)
+    │
+    ├─ ExtractSessionData(session)  // Safe type assertions
+    │   └─ Returns: gameID, playerID, username
+    │
+    ├─ playerService.HandleConnect(ctx, gameID, playerID, username)
+    │   ├─ Get game from repo
+    │   ├─ If new player (game.status == waiting):
+    │   │   ├─ Create Player
+    │   │   ├─ playerRepo.SavePlayer()
+    │   │   └─ playerRepo.AddPlayerToGame()
+    │   └─ If reconnecting (within 2-min timeout):
+    │       ├─ Cancel timeout timer
+    │       └─ Mark player connected
+    │
+    ├─ sessions.JoinRoom(gameID, playerID, session)
+    │
+    ├─ notifier.NotifyPlayerJoined() or NotifyAll("player_reconnected")
+    │
+    └─ sendGameStateToPlayer(ctx, gameID, playerID)
+        └─ NotifyPlayer(NotifGameState, {game, players})
 ```
 
 ## Data Flow: Start Game
 
 ```
-Client → WebSocket message {
-  channel: "game_event",
-  type: "start_game",
-  data: {gameID, playerID}
-}
-  ↓
-WebSocketHandler.setupEvents() routes to StartGameHandler
-  ├─ Validate playerID is host
-  ├─ gameService.StartGame(gameID, playerID)
-  │  ├─ Get game from gameRepo
-  │  ├─ Validate game.CanStart() [players, roles, balance]
-  │  ├─ Get all players: playerRepo.GetPlayersByGame()
-  │  ├─ Shuffle and assign roles: helpers.AssignRoles(players, settings)
-  │  │  └─ Each player gets Role implementation (Werewolf, Seer, etc)
-  │  ├─ Save all players: playerRepo.SavePlayers()
-  │  ├─ Update game: status=active, phase=night, day=1
-  │  ├─ gameRepo.SaveGame()
-  │  └─ return game, players
-  │
-  ├─ gameEngine.StartGameFlow(gameID)
-  │  ├─ Start first night phase
-  │  ├─ Determine seer player
-  │  ├─ Start seer timer
-  │  └─ BroadcastToGame(Event{type: "night"})
-  │
-  └─ Send visibility data to each player
-    └─ For each player:
-      └─ visibilityService.BuildPlayersDetailsForPlayer(player, allPlayers, phase)
-        └─ Returns player list filtered by visibility rules
-      └─ SendToPlayer(playerID, Event{type: "game_data", data: {...}})
+Client → WebSocket {channel: "command", type: "start_game"}
+    │
+    ▼
+CommandHandler.handleStartGame(cmdCtx)
+    │
+    ├─ Validate player is host
+    │
+    ├─ gameService.StartGame(ctx, gameID, playerID)
+    │   ├─ game.CanStart() validation
+    │   ├─ helpers.AssignRoles(players, settings)
+    │   ├─ playerRepo.SavePlayers()
+    │   ├─ game.Status = active, game.Phase = night
+    │   └─ gameRepo.SaveGame()
+    │
+    ├─ gameEngine.StartGameFlow(ctx, gameID)
+    │   ├─ NotifyAll(NotifGameStarted)
+    │   ├─ For each player: NotifyPlayer(NotifRoleReveal)
+    │   ├─ nightService.StartNight()
+    │   └─ Start first role's turn (Seer)
+    │
+    └─ Return ack
 ```
 
-## Data Flow: Seer Vision Action (Night Phase)
+## Data Flow: Night Phase Actions
+
+### Seer Vision
 
 ```
-Client → WebSocket message {
-  channel: "game_event",
-  type: "seer_action",
-  data: {gameID, seerID, targetID}
-}
-  ↓
-WebSocketHandler.HandleSeerAction()
-  ├─ Validation:
-  │  ├─ gameEngine.HandleSeerAction(gameID, seerID, targetID)
-  │  │  ├─ Get game, check phase == night
-  │  │  ├─ Get seer and target players
-  │  │  ├─ Check seer alive, not used ability, target alive
-  │  │  ├─ nightService.RecordSeerAction(gameID, targetID, targetRole)
-  │  │  ├─ Check if night complete: nightService.IsNightComplete()
-  │  │  │  └─ If yes: ProcessNightEnd(gameID)
-  │  │  │    ├─ Get pending deaths from witch actions
-  │  │  │    ├─ Kill those players
-  │  │  │    ├─ Update game: phase = day
-  │  │  │    ├─ BroadcastToGame(Event{type: "day", data: {deaths}})
-  │  │  │    ├─ Check win condition
-  │  │  │    └─ If no winner: StartPhaseTimer(day) → 3 minutes
-  │  │  │
-  │  │  ├─ timerService.SkipTimer() if all acted
-  │  │  └─ return nil
-  │  │
-  │  └─ Send ACK to seer
-  │
-  └─ BroadcastToGame(Event{
-       channel: "game_event",
-       type: "game_action",
-       data: {action: "seer_action", status: "success"}
-     })
+GameEngine starts seer turn:
+    │
+    ├─ Find alive seer
+    ├─ Get valid targets (alive, not self)
+    └─ promptService.CreatePrompt({
+        Type: select_player,
+        Context: "seer_vision",
+        Timeout: 30s
+       })
+        │
+        ▼
+    PromptService.CreatePrompt()
+        ├─ Store prompt
+        ├─ Start timer
+        └─ sendPromptToPlayer() → WebSocket prompt message
+
+Client receives prompt, selects target
+
+Client → WebSocket {channel: "response", promptId, response: {playerId}}
+    │
+    ▼
+PromptService.RespondToPrompt()
+    ├─ Validate & mark answered
+    └─ Trigger callback → GameEngine.handleSeerVisionResponse()
+        ├─ Get target's role
+        ├─ NotifyPlayer(NotifSeerResult, {targetId, isWerewolf})
+        └─ nightService.AdvancePhase() → Werewolf turn
 ```
 
-## Data Flow: Village Vote (Day Phase)
+### Werewolf Vote
 
 ```
-Client → WebSocket message {
-  channel: "game_event",
-  type: "village_vote",
-  data: {gameID, voterID, targetID}
-}
-  ↓
-WebSocketHandler.HandleVillageVote()
-  ├─ gameEngine.HandleVillageVote(gameID, voterID, targetID)
-  │  ├─ Get game, check phase == vote
-  │  ├─ Get vote: voteService.GetVote(gameID)
-  │  ├─ voteService.CastVote(gameID, voterID, targetID)
-  │  │  └─ vote.CastBallot(voterID, targetID)
-  │  │    ├─ Validate voter eligible
-  │  │    ├─ Validate target eligible
-  │  │    ├─ Store ballot
-  │  │    └─ return success
-  │  │
-  │  ├─ If voteService.HasEveryoneVoted():
-  │  │  └─ ProcessVoteResult(gameID)
-  │  │    ├─ voteService.ResolveVote(gameID)
-  │  │    │  └─ vote.Resolve() → VoteResult{target, counts, isTie}
-  │  │    ├─ If target: kill player
-  │  │    ├─ Update game: phase = night, day++
-  │  │    ├─ gameRepo.SaveGame()
-  │  │    ├─ nightService.StartNight()
-  │  │    ├─ Check win condition
-  │  │    ├─ BroadcastToGame(Event{type: "vote_resolved"})
-  │  │    └─ StartPhaseTimer(night)
-  │  │
-  │  └─ return nil
-  │
-  └─ BroadcastToGame(Event{
-       channel: "game_event",
-       type: "vote",
-       data: {voterID, targetID}
-     })
+GameEngine starts werewolf turn:
+    │
+    └─ promptService.CreateGroupVote({
+        Context: "werewolf_vote",
+        Voters: [werewolf IDs],
+        Targets: [non-werewolf alive IDs],
+        Timeout: 60s
+       })
+        │
+        ▼
+    For each werewolf:
+        └─ Send vote prompt
+
+Werewolf votes → PromptService
+    ├─ Update GroupVoteState
+    ├─ NotifyAll werewolves (NotifVoteUpdate) with current votes
+    └─ If all voted or timeout:
+        └─ Resolve vote → GameEngine.handleWerewolfVoteResult()
+            ├─ nightService.RecordWerewolfVictim()
+            └─ Advance to Witch turn
 ```
 
-## Data Flow: Player Disconnect
+### Witch Action
 
 ```
-Client → WebSocket Disconnect
-  ↓
-WebSocketHandler.HandleDisconnect (Melody event)
-  ├─ playerService.HandleDisconnect(gameID, playerID)
-  │  ├─ Get player
-  │  ├─ Mark player.ConnectionState = disconnected
-  │  ├─ playerRepo.SavePlayer()
-  │  ├─ Start reconnection timer (2 minutes)
-  │  │  └─ After 2 min: mark player.ConnectionState = inactive
-  │  └─ return nil
-  │
-  ├─ Clean up sessions: delete wsHandler.playerSessions[playerID]
-  │
-  └─ BroadcastToGame(Event{
-       channel: "conn_event",
-       type: "disconnection",
-       data: {playerID, connectionState: "disconnected"}
-     })
+GameEngine starts witch turn:
+    │
+    ├─ Get werewolf victim (if any)
+    ├─ Check available potions (heal/poison)
+    └─ promptService.CreatePrompt({
+        Type: select_option,
+        Context: "witch_potion",
+        Payload: WitchPotionPayload
+       })
+
+Witch chooses → PromptService → GameEngine.handleWitchResponse()
+    ├─ If "heal": nightService.RecordWitchAction(heal=victim)
+    ├─ If "poison": Prompt for target → RecordWitchAction(poison=target)
+    └─ nightService.AdvancePhase() → End night
 ```
 
-## Data Flow: Timer Expiry
+### Night Resolution
 
 ```
-Timer expired (e.g., day phase 3 minutes up)
-  ↓
-timerService callback: engine.handleTimerExpiry(gameID, phase, roleType)
-  ├─ Match phase:
-  │  ├─ PhaseDay: gameEngine.TransitionToVote(gameID)
-  │  │  ├─ Create vote: voteService.StartVillageVote(gameID, alivePlayers)
-  │  │  ├─ Update game: phase = vote
-  │  │  ├─ gameRepo.SaveGame()
-  │  │  ├─ BroadcastToGame(Event{type: "vote_started"})
-  │  │  └─ StartPhaseTimer(vote) → 2 minutes
-  │  │
-  │  ├─ PhaseVote: gameEngine.ProcessVoteResult(gameID)
-  │  │  └─ [See Vote Result data flow above]
-  │  │
-  │  └─ PhaseNight (roleType): gameEngine.handleNightRoleTimeout()
-  │     ├─ If seer timeout: mark seer as acted
-  │     ├─ If werewolf timeout: resolve vote anyway
-  │     └─ If witch timeout: proceed
-  │
-  └─ Possibly transition to next phase
+nightService.IsNightComplete() == true
+    │
+    ▼
+GameEngine.processNightEnd()
+    ├─ nightService.GetPendingDeaths()
+    │   └─ Returns: werewolf victim (if not healed) + poison victim
+    │
+    ├─ For each death:
+    │   ├─ player.Kill()
+    │   ├─ playerRepo.SavePlayer()
+    │   └─ NotifyAll(NotifPlayerDied, {playerId, cause, role})
+    │
+    ├─ Check win condition
+    │
+    ├─ If game continues:
+    │   ├─ game.Phase = day
+    │   ├─ gameRepo.SaveGame()
+    │   ├─ NotifyAll(NotifPhaseChanged, {phase: "day"})
+    │   └─ timerService.StartPhaseTimer(day, 3min)
+    │
+    └─ nightService.ClearNight()
 ```
 
-## Data Flow: Broadcasting Event to Room
+## Data Flow: Day Phase → Vote
 
 ```
-Service calls: broadcaster.BroadcastToGame(gameID, payload)
-  ↓
-WebSocketHandler.BroadcastToGame()
-  ├─ Acquire read lock
-  ├─ Get all sessions in room: wsHandler.rooms[gameID]
-  ├─ For each session:
-  │  └─ melody.Session.Write(payload)
-  └─ Release lock
-  ↓
-Client receives WebSocket message with event
-  ├─ Parse Event{channel, type, data}
-  └─ Handle per channel/type
+Timer expires (3 min day discussion)
+    │
+    ▼
+timerService callback → GameEngine.handleTimerExpiry()
+    │
+    ├─ game.Phase = vote
+    ├─ gameRepo.SaveGame()
+    │
+    ├─ voteService.StartVillageVote(gameID, alivePlayers)
+    │   └─ Creates Vote entity
+    │
+    ├─ promptService.CreateGroupVote({
+    │   Context: "village_vote",
+    │   Voters: alive players,
+    │   Targets: alive players,
+    │   CanAbstain: true
+    │ })
+    │
+    └─ NotifyAll(NotifVoteStarted)
 ```
 
-## Data Flow: Sending to Specific Player
+## Data Flow: Village Vote Resolution
 
 ```
-Service calls: playerSender.SendToPlayer(playerID, payload)
-  ↓
-WebSocketHandler.SendToPlayer()
-  ├─ Acquire read lock
-  ├─ Get session: wsHandler.playerSessions[playerID]
-  ├─ If exists: melody.Session.Write(payload)
-  └─ Release lock
-  ↓
-Player client receives message
-```
-
-## Data Flow: Win Condition Check
-
-```
-After phase transitions, check: gameEngine.checkWinCondition(gameID)
-  ├─ Get all players
-  ├─ Separate by clan (alive players)
-  ├─ If no werewolves alive: villagers win
-  ├─ If werewolves >= villagers: werewolves win
-  ├─ If no one alive: no winner (draw)
-  ├─ If someone won:
-  │  ├─ Update game: status = ended
-  │  ├─ gameRepo.SaveGame()
-  │  ├─ BroadcastToGame(Event{type: "win", data: {winners, clan}})
-  │  ├─ playerService.CleanupGamePlayers(gameID)
-  │  └─ Clean up timers
-  └─ If no win yet: continue game
+All players vote (or timeout)
+    │
+    ▼
+PromptService resolves group vote
+    │
+    └─ Callback → GameEngine.handleVillageVoteResult()
+        │
+        ├─ voteService.ResolveVote()
+        │   └─ vote.Resolve() → VoteResult{target, counts, isTie}
+        │
+        ├─ If target (no tie):
+        │   ├─ player.Kill()
+        │   ├─ playerRepo.SavePlayer()
+        │   └─ NotifyAll(NotifPlayerDied)
+        │
+        ├─ NotifyAll(NotifVoteResult, {result, counts})
+        │
+        ├─ Check win condition
+        │
+        └─ If game continues:
+            ├─ game.Phase = night, game.Day++
+            ├─ gameRepo.SaveGame()
+            ├─ nightService.StartNight()
+            └─ Start seer turn
 ```
 
 ## Data Flow: Chat Message
 
 ```
-Client → WebSocket message {
-  channel: "game_event",
-  type: "chat_message",
-  data: {gameID, playerID, channel: "town"|"werewolf"|"dead", message}
-}
-  ↓
-WebSocketHandler.HandleChatMessage()
-  ├─ Validation:
-  │  ├─ Get player and game
-  │  ├─ chatService.CanSendToChannel(player, channel, gamePhase)
-  │  │  └─ Rules:
-  │  │     ├─ town: day/vote phase, alive players
-  │  │     ├─ werewolf: night phase, alive werewolves
-  │  │     └─ dead: only dead players
-  │  └─ Validate message length
-  │
-  ├─ Get recipients: chatService.GetChannelRecipients(channel, allPlayers, phase)
-  │
-  └─ For each recipient:
-    └─ SendToPlayer(recipientID, Event{
-         type: "chat_message",
-         data: {playerID, username, message}
-       })
+Client → {channel: "command", type: "send_chat", payload: {message, channel}}
+    │
+    ▼
+CommandHandler.handleSendChat()
+    │
+    ├─ Validate message length
+    │
+    ├─ helpers.SanitizeChatMessage(message)
+    │   └─ Remove control characters
+    │
+    ├─ Get game and sender
+    │
+    ├─ chatService.CanSendToChannel(sender, channel, phase)
+    │   └─ Rules: village=day+alive, werewolf=night+werewolf, dead=dead
+    │
+    ├─ getChannelRecipients(channel, game)
+    │   └─ Filter players by channel rules
+    │
+    └─ notifier.NotifyChatMessage(recipients, senderID, username, message, channel, timestamp)
+        └─ For each recipient: SendToPlayer(NotifChatMessage)
 ```
 
-## Data Flow: Player Visibility
+## Data Flow: Player Disconnect
 
 ```
-When game state changes or player joins:
-  ├─ For each player in game:
-  │  ├─ Get all game players
-  │  ├─ visibilityService.BuildPlayersDetailsForPlayer(player, allPlayers, gamePhase)
-  │  │  ├─ Player always sees own role
-  │  │  ├─ Werewolves see each other's roles
-  │  │  ├─ Dead players' roles visible at day/vote
-  │  │  ├─ Others: username + alive status only
-  │  │  └─ Return filtered []PlayersDetailsData
-  │  │
-  │  └─ SendToPlayer(playerID, Event{
-  │       type: "game_data",
-  │       data: {game, players: visiblePlayers}
-  │     })
+WebSocket disconnect event
+    │
+    ▼
+Handler.onDisconnect(session)
+    │
+    ├─ ExtractGameID, ExtractPlayerID (safe)
+    │
+    ├─ sessions.LeaveRoom(gameID, playerID, session)
+    │
+    ├─ playerService.HandleDisconnect(ctx, gameID, playerID)
+    │   ├─ player.Disconnect()
+    │   ├─ playerRepo.SavePlayer()
+    │   └─ Start 2-min timer:
+    │       └─ After timeout: player.SetInactive()
+    │
+    └─ notifier.NotifyPlayerLeft(gameID, playerID, username, "disconnected")
 ```
 
-## Service Dependencies & Responsibility Matrix
+## Data Flow: Kick Player
 
-| Service | Uses | Used By | Responsibility |
-|---------|------|---------|-----------------|
-| GameService | GameRepo, PlayerRepo | GameEngine, Controllers | Create, join, configure games |
-| PlayerService | PlayerRepo, GameRepo, ConnChecker | WebSocketHandler, GameEngine | Player lifecycle, reconnection |
-| GameEngine | All services | WebSocketHandler | Game flow orchestration, timers |
-| TimerService | Broadcaster | GameEngine | Phase and role timers |
-| VoteService | VoteRepo, Broadcaster, PlayerSender | GameEngine | Voting mechanics |
-| NightService | Broadcaster, VoteService | GameEngine | Night phase coordination |
-| VisibilityService | - | WebSocketHandler | Role visibility filtering |
-| ChatService | - | WebSocketHandler | Chat permissions |
-| WebSocketHandler | GameService, PlayerService, GameEngine | Routes | WebSocket lifecycle, event routing |
+```
+Client → {channel: "command", type: "kick_player", payload: {playerId, reason}}
+    │
+    ▼
+CommandHandler.handleKickPlayer()
+    │
+    ├─ Validate sender is host
+    ├─ Validate target != self
+    ├─ Validate game.Status == waiting
+    │
+    ├─ Get target player
+    │
+    ├─ playerRepo.RemovePlayerFromGame()
+    ├─ Remove from game.Players
+    ├─ gameRepo.SaveGame()
+    │
+    ├─ notifier.NotifyPlayerLeft(gameID, targetID, username, "kicked")
+    │
+    └─ disconnecter.DisconnectPlayer(gameID, targetID, reason)
+        └─ sessions.DisconnectPlayer() → Close WebSocket
+```
 
-## Circular Dependency Resolution
+## Win Condition Check
 
-The circular dependency between PlayerService and WebSocketHandler is resolved through:
+```
+GameEngine.checkWinCondition(gameID)
+    │
+    ├─ Get all players
+    ├─ Count alive by clan
+    │
+    ├─ If no werewolves alive → Villagers win
+    ├─ If werewolves >= villagers → Werewolves win
+    ├─ If no one alive → Draw
+    │
+    └─ If winner:
+        ├─ game.Status = ended
+        ├─ gameRepo.SaveGame()
+        ├─ NotifyAll(NotifGameEnded, {winner, survivors})
+        ├─ timerService.CancelTimer()
+        └─ playerService.CleanupGamePlayers()
+```
 
-1. **Deferred Wiring**:
-   - WebSocketHandler created without PlayerService
-   - PlayerService created separately
-   - Later: wsHandler.SetPlayerService(playerService)
-   - Later: playerService.connChecker = wsHandler
+## Broadcasting Patterns
 
-2. **Interface Segregation**:
-   - PlayerService depends on ConnectionChecker interface (not WebSocketHandler)
-   - WebSocketHandler implements ConnectionChecker
-   - Allows inversion of control
+### NotifyPlayer (single recipient)
+```go
+notifier.NotifyPlayer(playerID, NotifRoleReveal, {role: "seer"})
+    │
+    └─ sessionManager.SendToPlayer(playerID, payload)
+        └─ session.Write(json)
+```
 
-3. **Callback Patterns**:
-   - GameEngine.SetExpiryCallback(engine.handleTimerExpiry)
-   - Events flow out via Broadcaster/PlayerSender
-   - No inbound dependencies from services to handlers
+### NotifyAll (room broadcast)
+```go
+notifier.NotifyAll(gameID, NotifPhaseChanged, {phase: "day"})
+    │
+    └─ sessionManager.BroadcastToGame(gameID, payload)
+        └─ For each session in room: session.Write(json)
+```
+
+### NotifyExcept (broadcast minus one)
+```go
+notifier.NotifyExcept(gameID, excludeID, NotifPlayerJoined, {...})
+    │
+    └─ For each player in game except excludeID:
+        └─ SendToPlayer(playerID, payload)
+```
+
+## Service Dependency Matrix
+
+| Service | Uses | Used By |
+|---------|------|---------|
+| GameService | GameRepo, PlayerRepo | CommandHandler, GameEngine |
+| PlayerService | PlayerRepo, GameRepo, ConnectionChecker | Handler, CommandHandler |
+| GameEngine | All services, Repos | CommandHandler (via callbacks) |
+| PromptService | PlayerSender, NotificationService | GameEngine, Handler |
+| NotificationService | SessionManager | All services |
+| VoteService | VoteRepo, Broadcaster | GameEngine |
+| NightService | Broadcaster, VoteService, PlayerRepo | GameEngine |
+| TimerService | Broadcaster | GameEngine |
+| VisibilityService | - | Handler |
+| ChatService | - | CommandHandler |
+| CommandHandler | GameService, PlayerService, ChatService, Notifier | Handler |
+| SessionManager | Melody | NotificationService, Handler |

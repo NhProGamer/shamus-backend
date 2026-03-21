@@ -1,49 +1,122 @@
 # Task Completion Checklist
 
-When completing a coding task, verify the following:
+## Before Committing
 
-## 1. Code Quality
-- [ ] Code follows project naming conventions (PascalCase types, camelCase JSON)
+### 1. Code Quality
+- [ ] Code follows naming conventions (PascalCase types, camelCase JSON)
 - [ ] Errors use `apperrors` package when appropriate
 - [ ] New exported types/functions have doc comments
 - [ ] Dependencies injected via constructors (no globals)
+- [ ] Input validation at entry points
+- [ ] User input sanitized where needed
 
-## 2. Testing
-```bash
-# Run tests to verify no regressions
-go test ./...
-```
+### 2. Security Checks
+- [ ] No unsafe type assertions (use ok-pattern)
+- [ ] Player-game validation for WebSocket commands
+- [ ] Chat messages sanitized
+- [ ] Atomic operations for consumable resources
 
-## 3. Formatting
+### 3. Build & Test
 ```bash
-# Format all Go files
+# Format
 go fmt ./...
-```
 
-## 4. Static Analysis
-```bash
-# Check for common issues
+# Static analysis
 go vet ./...
-```
 
-## 5. Dependencies
-```bash
-# Ensure go.mod is clean
-go mod tidy
-```
+# Tests
+go test ./...
 
-## 6. Build Check
-```bash
-# Verify project compiles
+# Build
 go build ./...
 ```
 
-## Quick One-Liner
+### 4. Lint (Optional but Recommended)
+```bash
+golangci-lint run
+```
+
+### 5. Quick One-Liner
 ```bash
 go fmt ./... && go vet ./... && go test ./... && go build ./...
 ```
 
-## Before Committing
-1. Run the quick one-liner above
-2. Review `git diff` for unintended changes
-3. Write a clear commit message describing the change
+## Adding New Features
+
+### New Domain Entity
+- [ ] Create entity in `internal/domain/entities/`
+- [ ] Add any related types (ID alias, enum, etc.)
+- [ ] Add validation methods if needed
+- [ ] Export in package
+
+### New Service
+- [ ] Define port interface in `internal/domain/ports/services.go`
+- [ ] Implement in `internal/application/services/`
+- [ ] Add to DI in `cmd/server/main.go`
+- [ ] Wire to handlers if needed
+
+### New Command (WebSocket)
+- [ ] Add CommandType constant in `entities/command.go`
+- [ ] Add payload struct in `entities/commands/payloads.go`
+- [ ] Add handler in `websocket/command_handler.go`
+- [ ] Add error mapping in `websocket/handler.go`
+- [ ] Update `docs/api/asyncapi.yaml`
+
+### New Notification
+- [ ] Add NotificationType constant in `entities/notification.go`
+- [ ] Add notify method in `services/notification_service.go`
+- [ ] Update `docs/api/asyncapi.yaml`
+
+### New Prompt Type
+- [ ] Add PromptType constant if new
+- [ ] Add payload struct in `entities/prompts/payloads.go`
+- [ ] Add response struct in `entities/prompts/responses.go`
+- [ ] Update `docs/api/asyncapi.yaml`
+
+### New REST Endpoint
+- [ ] Add handler in `http/controllers/`
+- [ ] Add route in `http/routes/routes.go`
+- [ ] Update `docs/api/openapi.yaml`
+
+## Commit Message Format
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+```
+
+Types:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation
+- `refactor`: Code refactoring
+- `test`: Tests
+- `chore`: Maintenance
+
+Examples:
+```
+feat(websocket): add kick_player command
+fix(vote): validate voters in NewVote constructor
+docs(api): add AsyncAPI specification
+refactor(abilities): replace Consume with TryConsume
+```
+
+## PR Description Template
+
+```markdown
+## Summary
+Brief description of changes
+
+## Changes
+- Change 1
+- Change 2
+
+## Testing
+- [ ] Unit tests pass
+- [ ] Manual testing done
+
+## Documentation
+- [ ] Code comments added
+- [ ] API docs updated (if applicable)
+```

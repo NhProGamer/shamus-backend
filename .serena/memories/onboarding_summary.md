@@ -4,10 +4,11 @@
 
 **Shamus Backend** is a production-grade Werewolf game backend implementing a real-time multiplayer game engine with:
 - Clean hexagonal (ports & adapters) architecture
-- WebSocket-based real-time communication
+- WebSocket-based real-time communication (Command/Response/Prompt/Notification pattern)
 - Redis for persistent state management
 - OIDC-based authentication
 - Comprehensive game logic and role mechanics
+- OpenAPI + AsyncAPI documentation
 
 **Key Stats**:
 - Go 1.24
@@ -15,6 +16,7 @@
 - 4 roles: Villager, Werewolf, Seer, Witch
 - 3+ game phases per cycle: Night → Day → Vote
 - 24-hour data retention
+- 20+ notification types, 5 command types, 4 prompt types
 
 ## Architecture Overview
 
@@ -22,17 +24,17 @@
 
 ```
 ┌─────────────────────────────────────┐
-│  Infrastructure Layer                │
-│  (HTTP, WebSocket, Config, Routes)  │
+│  Primary Adapters                    │
+│  (HTTP Controllers, WebSocket)      │
 ├─────────────────────────────────────┤
-│  Adapters Layer                      │
-│  (Services, Repositories, WebSocket) │
+│  Application Layer                   │
+│  (Services, GameEngine Orchestrator) │
 ├─────────────────────────────────────┤
 │  Domain Layer                        │
 │  (Entities, Ports, Rules)           │
 ├─────────────────────────────────────┤
-│  External Dependencies               │
-│  (Redis, OIDC, Gin, Melody)         │
+│  Secondary Adapters                  │
+│  (Redis Repositories)               │
 └─────────────────────────────────────┘
 ```
 
@@ -43,79 +45,95 @@
    - Player: Individual with role, connection state, vote
    - Role: Polymorphic interface (Seer, Werewolf, Witch, Villager)
    - Vote: Voting system with resolution logic
-   - Event: WebSocket message structure
+   - Prompt: Interactive requests with timeout
+   - Command: Client-to-server actions
+   - Notification: Server-to-client updates
 
 2. **Application Services** (Business Rules)
    - GameService: Game creation and lifecycle
    - PlayerService: Player management and reconnection
    - GameEngine: Game flow orchestration (orchestrator pattern)
-   - VisibilityService: Role-based information filtering
-   - ChatService: Channel permissions and routing
-   - TimerService: Phase and role timing
+   - PromptService: Interactive prompts with timeouts
+   - NotificationService: Server-to-client notifications
    - VoteService: Voting mechanics
    - NightService: Night phase coordination
+   - TimerService: Phase and role timing
+   - VisibilityService: Role-based information filtering
+   - ChatService: Channel permissions and routing
 
-3. **Infrastructure Adapters**
-   - WebSocketHandler: Real-time communication (implements Broadcaster)
-   - RedisGameRepo: Game persistence
-   - RedisPlayerRepo: Player persistence
-   - VoteRepository: In-memory vote storage
-   - Controllers: HTTP endpoints
-   - Routes: URL routing
+3. **Primary Adapters**
+   - HTTP: REST API (game creation, health checks)
+   - WebSocket Handler: Connection lifecycle
+   - Command Handler: Process client commands
+   - Session Manager: Player-session mapping
 
-4. **External Integration**
-   - Redis: State persistence with 24h TTL
-   - Gin: HTTP framework
-   - Melody: WebSocket library
-   - OIDC (coreos/go-oidc): Authentication
-   - Zerolog: Logging
+4. **Secondary Adapters**
+   - Redis Repositories: Game, Player, Vote persistence
 
 ## Critical Data Flows
 
 ### Game Lifecycle
 
 ```
-1. CREATE    → HTTP POST /api/v1/game              → Game(status:waiting)
-2. JOIN      → WebSocket /ws/{gameID}              → Player joins, adds to game
-3. CONFIGURE → WebSocket game_event:settings       → Host updates roles
-4. START     → WebSocket game_event:start_game     → Roles assigned, night begins
-5. PLAY      → WebSocket game_event:*              → Actions, votes, phases
-6. END       → Win condition met                   → Game status:ended
+1. CREATE    → HTTP POST /app/api/v1/game       → Game(status:waiting)
+2. JOIN      → WebSocket /app/ws/{gameID}       → Player joins
+3. CONFIGURE → Command: update_settings          → Host updates roles
+4. START     → Command: start_game               → Roles assigned, night begins
+5. PLAY      → Prompts/Responses                 → Actions, votes, phases
+6. END       → Win condition met                 → Game status:ended
+```
+
+### WebSocket Channel Architecture
+
+```
+Server → Client:
+├─ notification: Informational (game_state, player_joined, chat_message, etc.)
+└─ prompt: Action required (vote, select_player, select_option, confirm)
+
+Client → Server:
+├─ command: Player actions (send_chat, update_settings, start_game, etc.)
+└─ response: Prompt answers (vote result, selection)
 ```
 
 ### Phase Cycle (Active Game)
 
 ```
-NIGHT (1 min total)
+NIGHT (sequential sub-phases)
 ├─ Seer (30s): Choose target to see
-├─ Werewolf (1 min): Vote to kill
-└─ Witch (45s): Heal or poison
+├─ Werewolf (1 min): Group vote to kill
+└─ Witch (45s): Heal victim or poison another
 
 DAY (3 min)
-├─ Discuss: All players chat
-└─ Vote (2 min): Eliminate by majority
+└─ Discussion: All alive players chat
+
+VOTE (2 min)
+└─ Village vote: Eliminate by majority
 
 [Back to NIGHT if game continues]
 ```
-
-### Key Integration Points
-
-1. **Player Joins** → PlayerService → GameRepo/PlayerRepo → Redis
-2. **Game Starts** → GameService → RoleAssignment → GameEngine → TimerService
-3. **Action Occurs** → GameEngine → Validation → StateUpdate → Broadcast
-4. **Timer Expires** → TimerService → GameEngine → Phase Transition
-5. **Vote Resolves** → VoteService → PlayerUpdate → WinCheck → End/Continue
-6. **Player Disconnects** → PlayerService → 2-min Timeout → Mark Inactive
 
 ## Important Concepts
 
 ### Dependency Injection Resolution
 
-The codebase handles circular dependencies elegantly:
-- WebSocketHandler created first without dependencies
-- Services created independently
-- Later: SetPlayerService() and SetGameEngine() complete the wiring
-- ConnectionChecker interface breaks the cycle (interface segregation)
+Circular dependencies handled via:
+1. Create components without circular deps
+2. Complete wiring with setter methods
+3. Interface segregation (ConnectionChecker, PlayerDisconnecter)
+
+```go
+wsHandler.SetPlayerService(playerService)
+commandHandler.SetGameEngine(gameEngine)
+commandHandler.SetDisconnecter(wsHandler)
+```
+
+### Security Measures
+
+- **Player-Game Validation**: CommandHandler validates player belongs to game
+- **Chat Sanitization**: Control characters removed (helpers.SanitizeChatMessage)
+- **Safe Type Assertions**: Session helpers with ok-pattern checks
+- **Ability Consumption**: TryConsume() prevents underflow
+- **Vote Validation**: NewVote() validates non-empty voters
 
 ### Visibility Rules
 
@@ -124,20 +142,6 @@ Role information visibility depends on:
 - **Werewolves**: See other werewolves
 - **Dead Players**: Roles revealed during day/vote phases
 - **Others**: Only see username and alive status
-
-### Vote Mechanics
-
-- Village votes: All alive players vote (majority elimination)
-- Werewolf votes: Only werewolves vote (selection)
-- Ties: No elimination if multiple targets tied
-- Abstention: Allowed for village vote (counts as no vote)
-
-### State Persistence
-
-- Redis TTL: 24 hours for all data
-- Key Format: game:{id}, player:{id}, game:{id}:player_ids
-- Batch Operations: PlayerRepo uses Redis pipeline for efficiency
-- In-Memory: Votes and night state stored temporarily, not persisted
 
 ### Win Conditions
 
@@ -149,43 +153,14 @@ Checked after each phase:
 
 ## External Dependencies
 
-### Framework & Libraries
-
 | Library | Purpose | Critical? |
 |---------|---------|-----------|
 | Gin | HTTP routing | Yes |
 | Melody | WebSocket management | Yes |
 | Redis | State persistence | Yes |
 | go-oidc | OIDC authentication | Yes |
-| Zerolog | Logging | No (replaceable) |
+| Zerolog | Logging | No |
 | UUID | ID generation | Yes |
-
-### Configuration Needs
-
-- OIDC Provider: Issuer URL, Client ID, Secret
-- Redis: Host, Port, Password, Database
-- Server: Host, Port, Public URL
-- CORS: Frontend origins (localhost:3000, :5173)
-
-## Testing Insights
-
-### Current Testing
-- Table-driven unit tests in domain layer
-- Game.CanStart() validation extensively tested
-- Error code mapping tested
-
-### Test Gaps
-- No integration tests (end-to-end flow)
-- No service orchestration tests
-- No WebSocket routing tests
-- No concurrent action tests
-- No Redis persistence tests
-
-### Validation Layers
-1. Controller: Extract, validate request
-2. Service: Business rule enforcement
-3. Repository: Persistence guarantees
-4. Client: Error code handling
 
 ## Development Recommendations
 
@@ -194,120 +169,77 @@ Checked after each phase:
 1. **New Game Action**:
    - Add validation to Game/Player entity
    - Implement in GameEngine
-   - Add to WebSocketHandler routing
-   - Emit events via Broadcaster
-   - Handle visibility if role-specific
+   - Create Prompt if interactive
+   - Emit notifications via NotificationService
 
 2. **New Role**:
-   - Create Role implementation (entities/roles/)
+   - Create Role implementation (`entities/roles/`)
    - Add RoleType enum
-   - Create factory method (factories/role_factory.go)
    - Add to NightPhaseOrder if active at night
-   - Add visibility rules (VisibilityService)
+   - Add visibility rules
 
-3. **New Service**:
-   - Define Port interface (domain/ports/)
-   - Implement in app layer
-   - Inject in main.go
-   - Wire to WebSocketHandler if needed
-   - Ensure broadcasts through Broadcaster
+3. **New Command**:
+   - Add CommandType constant
+   - Add payload struct (`entities/commands/`)
+   - Add handler in CommandHandler
 
-### Code Quality Tools Available
-
-- golangci-lint: Installed and available
-- gopls: Language server for IDE support
-
-### Key Commands
+### Commands
 
 ```bash
+go build ./...             # Build
 go test ./...              # Run all tests
 go run cmd/server/main.go  # Start server
 golangci-lint run          # Lint check
+go fmt ./... && go vet ./... && go test ./... && go build ./...  # Full check
 ```
 
 ## Critical Files to Know
 
 | Path | Purpose |
 |------|---------|
-| cmd/server/main.go | Entry point, DI wiring |
-| internal/domain/entities/game.go | Game state |
-| internal/domain/entities/player.go | Player state |
-| internal/domain/ports/*.go | Interface contracts |
-| internal/adapters/app/game_engine.go | Game orchestration |
-| internal/adapters/api/ws/websocket_handler.go | Real-time communication |
-| internal/adapters/infra/*_repo.go | Persistence |
-| internal/infrastructure/routes/routes.go | HTTP routes |
-| internal/domain/constants/constants.go | Game configuration |
-| internal/domain/errors/errors.go | Error definitions |
+| `cmd/server/main.go` | Entry point, DI wiring |
+| `internal/domain/entities/` | Core entities |
+| `internal/domain/ports/` | Interface contracts |
+| `internal/application/services/` | Service implementations |
+| `internal/application/orchestration/game_engine_v2.go` | Game orchestrator |
+| `internal/adapters/primary/websocket/handler.go` | WebSocket lifecycle |
+| `internal/adapters/primary/websocket/command_handler.go` | Command processing |
+| `internal/adapters/secondary/redis/` | Redis repositories |
+| `docs/api/openapi.yaml` | REST API spec |
+| `docs/api/asyncapi.yaml` | WebSocket API spec |
 
-## Quick Reference: Error Scenarios
+## API Documentation
 
-```
-New Player Join    → Game.status == waiting
-Game Start         → Game.CanStart() validation
-Seer Vision        → Game.phase == night, player alive, target alive
-Werewolf Kill Vote → All werewolves voted
-Witch Action       → Heal only if victim exists
-Village Vote       → Game.phase == vote, player alive
-Win Check          → After each phase transition
-Disconnect         → 2-min timeout before marking inactive
-```
+In debug mode (`config.Debug: true`):
+- `/docs/rest` - Swagger UI (REST)
+- `/docs/ws` - AsyncAPI UI (WebSocket)
+- `/docs/api/*` - Raw spec files
 
-## Memory Files Created
+## Memory Files Reference
 
-This onboarding includes four comprehensive memory files:
-
-1. **architecture_deep_dive.md**: Detailed layer-by-layer breakdown with component relationships
-2. **key_types_and_interfaces.md**: Complete type definitions and port interfaces
-3. **integration_and_data_flow.md**: How components interact and data flows through system
-4. **testing_and_validation.md**: Testing patterns and validation approach
-
-Refer to these for:
-- Architecture questions → architecture_deep_dive.md
-- Type definitions → key_types_and_interfaces.md
-- Data flow questions → integration_and_data_flow.md
-- Testing/validation → testing_and_validation.md
-
-## Next Steps for Development
-
-1. **Understand the Flow**: Read integration_and_data_flow.md and trace a complete game cycle
-2. **Set Up Dev Environment**: Ensure Redis and OIDC provider configured
-3. **Run Tests**: `go test ./...` to verify setup
-4. **Study a Service**: Start with GameService for simple pattern
-5. **Read WebSocket Handler**: Understand message routing
-6. **Explore GameEngine**: Learn game orchestration logic
-7. **Check Domain Rules**: Review constants and validation logic
-
-## Architecture Philosophy
-
-The codebase embodies these principles:
-- **Domain-Driven Design**: Business logic isolated in domain layer
-- **Hexagonal Architecture**: Infrastructure as plugin adapters
-- **Interface Segregation**: Small, focused interfaces (Broadcaster, PlayerSender)
-- **Dependency Inversion**: Services depend on ports, not implementation
-- **Event-Driven**: Services emit events, handlers decide delivery
-- **Repository Pattern**: Abstract persistence behind interface
-- **Single Responsibility**: Each service handles one concern
-
-This architecture allows:
-- Easy testing (mock implementations)
-- Technology swapping (Redis → different DB)
-- Parallel development (teams work on different layers)
-- Clear separation of concerns
-- Business logic reusability across interfaces
+| File | Content |
+|------|---------|
+| `architecture_deep_dive` | Layer details, directory structure |
+| `key_types_and_interfaces` | Type definitions, port interfaces |
+| `integration_and_data_flow` | Data flows, service interactions |
+| `project_overview` | Quick overview |
+| `code_style_conventions` | Naming, formatting |
+| `suggested_commands` | Build, test, lint commands |
+| `testing_and_validation` | Test patterns, validation layers |
+| `api_documentation` | API docs reference |
 
 ## Key Insights
 
-1. **Real-Time is Event-Driven**: Services emit events to Broadcaster, which sends to clients
-2. **State is Authoritative in Redis**: Memory caches, but Redis is truth
-3. **Visibility is Complex**: Three different visibility rules depending on player type and phase
-4. **Night Phase is Sequential**: Seer → Werewolf → Witch, each with timer
-5. **Circular Dependencies Resolved Elegantly**: Through interface segregation and deferred wiring
-6. **Role Assignment is Random**: Fisher-Yates shuffle before game start
-7. **Timeouts Matter**: 2-min reconnect, then inactive; 3-min day, 2-min vote, 30-90sec roles
+1. **Real-Time is Event-Driven**: Services emit notifications, handlers deliver
+2. **State is in Redis**: 24-hour TTL, authoritative source
+3. **Visibility is Role-Based**: Different rules for different roles/phases
+4. **Night Phase is Sequential**: Seer → Werewolf → Witch (priority order)
+5. **Circular Deps Resolved Elegantly**: Interface segregation + deferred wiring
+6. **Role Assignment is Random**: Fisher-Yates shuffle before start
+7. **Timeouts Matter**: 2-min reconnect, 3-min day, 2-min vote, 30-90sec roles
 
 ---
 
-**Created**: January 25, 2026
-**Version**: 1.0
+**Updated**: March 2026
+**Version**: 2.0
 **Status**: Complete Onboarding
