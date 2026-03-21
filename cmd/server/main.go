@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"shamus-backend/internal/adapters/primary/websocket"
-	"shamus-backend/internal/adapters/infra"
+	redisadapter "shamus-backend/internal/adapters/secondary/redis"
 	"shamus-backend/internal/application/orchestration"
 	"shamus-backend/internal/application/services"
 	"shamus-backend/internal/domain/constants"
@@ -71,9 +71,9 @@ func main() {
 	log.Info().Msg("Connected to Redis")
 
 	// === REPOSITORIES ===
-	gameRepo := infra.NewRedisGameRepo(rdb)
-	playerRepo := infra.NewRedisPlayerRepo(rdb)
-	voteRepo := infra.NewVoteRepository(rdb)
+	gameRepo := redisadapter.NewRedisGameRepo(rdb)
+	playerRepo := redisadapter.NewRedisPlayerRepo(rdb)
+	voteRepo := redisadapter.NewVoteRepository(rdb)
 
 	// === CORE SERVICES ===
 	gameService := services.NewGameService(gameRepo, playerRepo)
