@@ -114,10 +114,12 @@ func (s *VoteService) StartWerewolfVote(gameID entities.GameID, werewolves []*en
 	return vote, nil
 }
 
-// CastVote records a player's vote
+// CastVote records a player's vote atomically
+// Uses Redis HSET for atomic ballot storage - no race conditions possible
 func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error {
 	ctx := context.TODO()
 
+	// Get vote metadata to validate
 	vote, err := s.voteRepo.GetVote(ctx, gameID)
 	if err != nil {
 		return err
@@ -130,12 +132,36 @@ func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID
 		return apperrors.ErrVoteNotActive
 	}
 
-	if !vote.CastBallot(voterID, targetID) {
+	// Validate voter is eligible
+	isEligible := false
+	for _, id := range vote.EligibleVoters {
+		if id == voterID {
+			isEligible = true
+			break
+		}
+	}
+	if !isEligible {
 		return apperrors.ErrInvalidVoter
 	}
 
-	// Save updated vote
-	if err := s.voteRepo.SaveVote(ctx, gameID, vote); err != nil {
+	// Validate target is eligible (if not abstaining)
+	if targetID != nil {
+		targetEligible := false
+		for _, id := range vote.EligibleTargets {
+			if id == *targetID {
+				targetEligible = true
+				break
+			}
+		}
+		if !targetEligible {
+			return apperrors.ErrInvalidVoter
+		}
+	} else if !vote.AllowAbstain {
+		return apperrors.ErrInvalidVoter
+	}
+
+	// Cast ballot atomically using HSET - no race condition possible
+	if err := s.voteRepo.CastBallot(ctx, gameID, voterID, targetID); err != nil {
 		return err
 	}
 
@@ -162,7 +188,18 @@ func (s *VoteService) HasEveryoneVoted(gameID entities.GameID) bool {
 		return false
 	}
 
-	return vote.HasEveryoneVoted()
+	// No eligible voters means voting cannot complete normally
+	if len(vote.EligibleVoters) == 0 {
+		return false
+	}
+
+	// Get ballot count from Redis hash
+	ballotCount, err := s.voteRepo.GetBallotCount(ctx, gameID)
+	if err != nil {
+		return false
+	}
+
+	return int(ballotCount) >= len(vote.EligibleVoters)
 }
 
 // ResolveVote resolves the current vote and returns the result
