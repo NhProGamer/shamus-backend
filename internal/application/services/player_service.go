@@ -3,11 +3,13 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"math/rand"
 	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
+	"shamus-backend/pkg/logger"
 	"sync"
 	"time"
 )
@@ -19,10 +21,17 @@ type ConnectionChecker interface {
 	BroadcastToGame(gameID entities.GameID, payload []byte) error
 }
 
+// HostChangedNotifier is an interface to notify host changes
+// This avoids circular dependency with NotificationService
+type HostChangedNotifier interface {
+	NotifyHostChanged(gameID entities.GameID, newHostID entities.PlayerID, newHostUsername string) error
+}
+
 type PlayerService struct {
 	playerRepo   ports.PlayerRepository
 	gameRepo     ports.GameRepository
 	connChecker  ConnectionChecker
+	notifier     HostChangedNotifier
 	reconnTimers map[entities.PlayerID]*time.Timer
 	timerLock    sync.Mutex
 }
@@ -38,6 +47,11 @@ func NewPlayerService(
 		connChecker:  connChecker,
 		reconnTimers: make(map[entities.PlayerID]*time.Timer),
 	}
+}
+
+// SetNotifier sets the host changed notifier (to break circular dependency)
+func (s *PlayerService) SetNotifier(notifier HostChangedNotifier) {
+	s.notifier = notifier
 }
 
 // HandleConnect is called when a player connects via WebSocket
@@ -167,6 +181,33 @@ func (s *PlayerService) HandleDisconnect(gameID entities.GameID, playerID entiti
 
 		// Remove from game.Players slice
 		game.Players = removePlayerFromSlice(game.Players, playerID)
+
+		// Host migration: if the leaving player was the host, assign a new random host
+		if game.HostID == playerID && len(game.Players) > 0 {
+			newHostID := selectRandomHost(game.Players)
+			game.HostID = newHostID
+
+			// Get new host's username for notification
+			newHost, err := s.playerRepo.GetPlayer(context.TODO(), newHostID)
+			var newHostUsername string
+			if err == nil && newHost != nil {
+				newHostUsername = newHost.Username
+			}
+
+			logger.Get().Info().
+				Str("gameID", string(gameID)).
+				Str("oldHost", string(playerID)).
+				Str("newHost", string(newHostID)).
+				Msg("Host migrated to new player")
+
+			// Notify all players of host change (after saving game)
+			defer func() {
+				if s.notifier != nil {
+					s.notifier.NotifyHostChanged(gameID, newHostID, newHostUsername)
+				}
+			}()
+		}
+
 		if err := s.gameRepo.SaveGame(context.TODO(), game); err != nil {
 			return err
 		}
@@ -291,4 +332,15 @@ func removePlayerFromSlice(players []entities.PlayerID, playerID entities.Player
 		}
 	}
 	return players
+}
+
+// selectRandomHost selects a random player from the slice to be the new host
+func selectRandomHost(players []entities.PlayerID) entities.PlayerID {
+	if len(players) == 0 {
+		return ""
+	}
+	if len(players) == 1 {
+		return players[0]
+	}
+	return players[rand.Intn(len(players))]
 }

@@ -14,6 +14,7 @@ const (
 	NotifPlayerLeft     NotificationType = "player_left"
 	NotifPlayerDied     NotificationType = "player_died"
 	NotifPlayerInactive NotificationType = "player_inactive"
+	NotifHostChanged    NotificationType = "host_changed"
 
 	// Game state notifications
 	NotifGameState   NotificationType = "game_state"

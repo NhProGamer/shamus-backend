@@ -103,6 +103,7 @@ func main() {
 	// === PLAYER SERVICE ===
 	// Now we can create PlayerService with wsHandler as ConnectionChecker
 	playerService := services.NewPlayerService(playerRepo, gameRepo, wsHandler)
+	playerService.SetNotifier(notificationService) // For host migration notifications
 
 	// Inject PlayerService into WebSocket handler and CommandHandler
 	wsHandler.SetPlayerService(playerService)

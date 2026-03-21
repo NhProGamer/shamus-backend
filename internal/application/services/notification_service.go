@@ -143,6 +143,14 @@ func (s *NotificationService) NotifyPlayerDied(gameID entities.GameID, playerID 
 	})
 }
 
+// NotifyHostChanged notifies all players that the host has changed
+func (s *NotificationService) NotifyHostChanged(gameID entities.GameID, newHostID entities.PlayerID, newHostUsername string) error {
+	return s.NotifyAll(gameID, entities.NotifHostChanged, notifications.HostChangedPayload{
+		NewHostID:       newHostID,
+		NewHostUsername: newHostUsername,
+	})
+}
+
 // NotifyPlayerInactive notifies all players that a player became inactive
 func (s *NotificationService) NotifyPlayerInactive(gameID entities.GameID, playerID entities.PlayerID, username string) error {
 	return s.NotifyAll(gameID, entities.NotifPlayerInactive, notifications.PlayerInactivePayload{

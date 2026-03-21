@@ -36,6 +36,12 @@ type PlayerInactivePayload struct {
 	Username string            `json:"username"`
 }
 
+// HostChangedPayload is sent when the game host changes
+type HostChangedPayload struct {
+	NewHostID       entities.PlayerID `json:"newHostId"`
+	NewHostUsername string            `json:"newHostUsername"`
+}
+
 // GameStatePayload is sent to provide full game state (on connect, on request)
 type GameStatePayload struct {
 	ID       entities.GameID     `json:"id"`
