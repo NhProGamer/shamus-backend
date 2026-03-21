@@ -1,5 +1,7 @@
 package entities
 
+import "errors"
+
 type VoteType string
 type VoteStatus string
 
@@ -12,6 +14,11 @@ const (
 	VoteStatusPending  VoteStatus = "pending"
 	VoteStatusActive   VoteStatus = "active"
 	VoteStatusResolved VoteStatus = "resolved"
+)
+
+// Vote validation errors
+var (
+	ErrNoEligibleVoters = errors.New("cannot create vote with no eligible voters")
 )
 
 type Vote struct {
@@ -27,8 +34,13 @@ type Vote struct {
 	Result *VoteResult
 }
 
-// NewVote creates a new Vote with the given parameters
-func NewVote(id string, voteType VoteType, voters, targets []PlayerID, allowAbstain bool) *Vote {
+// NewVote creates a new Vote with the given parameters.
+// Returns an error if voters slice is empty.
+func NewVote(id string, voteType VoteType, voters, targets []PlayerID, allowAbstain bool) (*Vote, error) {
+	if len(voters) == 0 {
+		return nil, ErrNoEligibleVoters
+	}
+
 	return &Vote{
 		ID:              id,
 		Type:            voteType,
@@ -38,7 +50,7 @@ func NewVote(id string, voteType VoteType, voters, targets []PlayerID, allowAbst
 		Ballots:         make(map[PlayerID]*PlayerID),
 		AllowAbstain:    allowAbstain,
 		Result:          nil,
-	}
+	}, nil
 }
 
 // CastBallot records a vote from a voter to a target

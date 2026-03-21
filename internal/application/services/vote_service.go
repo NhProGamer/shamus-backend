@@ -47,13 +47,16 @@ func (s *VoteService) StartVillageVote(ctx context.Context, gameID entities.Game
 		}
 	}
 
-	vote := entities.NewVote(
+	vote, err := entities.NewVote(
 		uuid.New().String(),
 		entities.VoteTypeVillage,
 		voters,
 		targets,
 		true, // Allow abstain
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := s.voteRepo.SaveVote(ctx, gameID, vote); err != nil {
 		return nil, err
@@ -92,13 +95,16 @@ func (s *VoteService) StartWerewolfVote(ctx context.Context, gameID entities.Gam
 		}
 	}
 
-	vote := entities.NewVote(
+	vote, err := entities.NewVote(
 		uuid.New().String(),
 		entities.VoteTypeWerewolf,
 		voters,
 		targets,
 		true, // Allow no attack
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := s.voteRepo.SaveVote(ctx, gameID, vote); err != nil {
 		return nil, err
