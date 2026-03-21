@@ -17,28 +17,53 @@ The project follows a **Hexagonal/Ports & Adapters** architecture:
 
 ```
 shamus-backend/
-├── cmd/server/          # Entry point (main.go)
+├── cmd/server/                    # Entry point (main.go)
 ├── internal/
-│   ├── domain/          # Core business logic (entities, ports, errors)
-│   │   ├── entities/    # Game, Player, Role, Vote, Ability, Event
-│   │   ├── ports/       # Interfaces (services, repositories)
-│   │   ├── errors/      # Structured application errors
-│   │   ├── helpers/     # Game logic helpers
-│   │   └── constants/   # Game constants
-│   ├── adapters/        # Interface implementations
-│   │   ├── api/ws/      # WebSocket handler (EventService)
-│   │   ├── app/         # Application services (GameService, etc.)
-│   │   └── infra/       # Redis repositories
-│   ├── application/     # (empty - use adapters/app)
-│   └── infrastructure/  # HTTP layer
-│       ├── config/      # Config loading
-│       ├── controllers/ # HTTP handlers
-│       ├── routes/      # Route definitions
-│       └── middlewares/ # Auth, etc.
+│   ├── domain/                    # Core business logic
+│   │   ├── entities/              # Game, Player, Role, Vote, Ability, Event
+│   │   ├── ports/                 # Interfaces (services, repositories, broadcasting)
+│   │   ├── errors/                # Structured application errors
+│   │   ├── helpers/               # Game logic helpers
+│   │   └── constants/             # Game constants
+│   ├── application/               # Use cases and orchestration
+│   │   ├── services/              # Application services (GameService, PlayerService, etc.)
+│   │   └── orchestration/         # GameEngineV2 (game flow orchestrator)
+│   ├── adapters/                  # Interface implementations
+│   │   ├── primary/               # Driving adapters (incoming)
+│   │   │   ├── http/              # HTTP controllers, routes, middlewares
+│   │   │   └── websocket/         # WebSocket handler, session manager
+│   │   └── secondary/             # Driven adapters (outgoing)
+│   │       └── redis/             # Redis repositories
+│   └── infrastructure/            # Cross-cutting concerns
+│       └── config/                # YAML config loading
 └── pkg/
-    ├── logger/          # Zerolog wrapper
-    └── utils/           # Shared utilities
+    ├── logger/                    # Zerolog wrapper
+    └── utils/                     # Shared utilities
 ```
+
+## Hexagonal Architecture Layers
+
+### Domain Layer (`internal/domain/`)
+- **Entities**: Pure business objects (Game, Player, Role, Vote)
+- **Ports**: Interface contracts for services, repositories, broadcasting
+- **Errors**: Structured error types with error codes
+- **No external dependencies**
+
+### Application Layer (`internal/application/`)
+- **Services**: Use case implementations (GameService, PlayerService, VoteService, etc.)
+- **Orchestration**: GameEngineV2 - orchestrates game flow and phase transitions
+- **Depends only on domain ports**
+
+### Adapters Layer (`internal/adapters/`)
+- **Primary (Driving)**: Handle incoming requests
+  - HTTP: REST API controllers, routes, OIDC middleware
+  - WebSocket: Real-time communication, session management
+- **Secondary (Driven)**: Handle outgoing dependencies
+  - Redis: Game/Player/Vote persistence
+
+### Infrastructure Layer (`internal/infrastructure/`)
+- **Config**: Application configuration loading
+- Cross-cutting concerns only
 
 ## Game Mechanics
 - **Roles**: Villager, Werewolf, Seer, Witch
@@ -52,6 +77,7 @@ shamus-backend/
 - `GameEngine`: Orchestrates phase transitions and actions
 - `VoteService`: Village and werewolf voting
 - `NightService`: Night phase action tracking
-- `TimerService`: Phase/role timers
+- `NotificationService`: Server-to-client notifications
+- `PromptService`: Interactive prompts with timeouts
 - `ChatService`: Chat channel permissions
 - `VisibilityService`: Role visibility rules

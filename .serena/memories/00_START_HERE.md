@@ -74,13 +74,15 @@ Testing patterns and validation strategies:
 
 ## Key Concepts At A Glance
 
-### Architecture
+### Architecture (Hexagonal)
 ```
-Infrastructure (Routes, Controllers, Config)
+Primary Adapters (HTTP, WebSocket)
     ↓
-Adapters (Services, Repositories, WebSocket)
+Application (Services, Orchestration)
     ↓
 Domain (Entities, Ports, Rules)
+    ↓
+Secondary Adapters (Redis)
     ↓
 External (Redis, Gin, Melody, OIDC)
 ```
@@ -136,13 +138,15 @@ Services don't call clients directly. They emit events to a Broadcaster interfac
 
 | Path | Purpose |
 |------|---------|
-| cmd/server/main.go | Entry point, 7-phase DI |
+| cmd/server/main.go | Entry point, dependency injection |
 | internal/domain/entities/ | Game, Player, Role, Vote |
-| internal/domain/ports/ | Interface contracts (3 files) |
-| internal/adapters/app/ | GameService, PlayerService, GameEngine |
-| internal/adapters/api/ws/ | WebSocketHandler (real-time communication) |
-| internal/adapters/infra/ | Repositories (Redis) |
-| internal/infrastructure/routes/ | HTTP routes and endpoints |
+| internal/domain/ports/ | Interface contracts (services, repos, broadcasting) |
+| internal/application/services/ | GameService, PlayerService, NotificationService, etc. |
+| internal/application/orchestration/ | GameEngineV2 (game flow orchestrator) |
+| internal/adapters/primary/http/ | HTTP controllers, routes, middlewares |
+| internal/adapters/primary/websocket/ | WebSocket handler, session manager |
+| internal/adapters/secondary/redis/ | Redis repositories |
+| internal/infrastructure/config/ | YAML configuration loading |
 
 ## External Dependencies
 
