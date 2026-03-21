@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"shamus-backend/internal/adapters/secondary/redis"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	apperrors "shamus-backend/internal/domain/errors"
@@ -14,13 +13,13 @@ import (
 
 // VoteService manages voting sessions for games
 type VoteService struct {
-	voteRepo     *redis.VoteRepository
+	voteRepo     ports.VoteRepository
 	broadcaster  ports.Broadcaster
 	playerSender ports.PlayerSender
 }
 
 // NewVoteService creates a new VoteService
-func NewVoteService(voteRepo *redis.VoteRepository, broadcaster ports.Broadcaster, playerSender ports.PlayerSender) *VoteService {
+func NewVoteService(voteRepo ports.VoteRepository, broadcaster ports.Broadcaster, playerSender ports.PlayerSender) *VoteService {
 	return &VoteService{
 		voteRepo:     voteRepo,
 		broadcaster:  broadcaster,

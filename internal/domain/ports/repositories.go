@@ -44,5 +44,27 @@ type PlayerRepository interface {
 	DeleteGamePlayers(ctx context.Context, gameID entities.GameID) error
 }
 
-// NOTE: ActionRepository has been replaced by in-memory state in PromptService.
-// See internal/adapters/app/prompt_service.go for the new implementation.
+// VoteRepository defines persistence operations for votes
+type VoteRepository interface {
+	// SaveVote persists vote metadata to storage
+	SaveVote(ctx context.Context, gameID entities.GameID, vote *entities.Vote) error
+
+	// GetVote retrieves a vote from storage
+	GetVote(ctx context.Context, gameID entities.GameID) (*entities.Vote, error)
+
+	// CastBallot atomically records a single player's vote
+	CastBallot(ctx context.Context, gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
+
+	// GetBallot retrieves a single player's vote
+	// Returns (targetID, hasCast, error) - hasCast is true if player has voted (even if abstention)
+	GetBallot(ctx context.Context, gameID entities.GameID, voterID entities.PlayerID) (*entities.PlayerID, bool, error)
+
+	// GetBallotCount returns the number of ballots cast
+	GetBallotCount(ctx context.Context, gameID entities.GameID) (int64, error)
+
+	// DeleteVote removes a vote and its ballots from storage
+	DeleteVote(ctx context.Context, gameID entities.GameID) error
+
+	// VoteExists checks if a vote exists for a game
+	VoteExists(ctx context.Context, gameID entities.GameID) (bool, error)
+}

@@ -132,3 +132,21 @@ type VoteResult struct {
 	IsTie       bool
 	TiedPlayers []PlayerID
 }
+
+// GroupVoteResult represents the result of a group vote (used by PromptService)
+type GroupVoteResult struct {
+	// Target is the winning target (nil if no clear winner or tie)
+	Target *PlayerID
+
+	// IsTie indicates if there was a tie
+	IsTie bool
+
+	// TiedTargets contains the tied targets (if IsTie is true)
+	TiedTargets []PlayerID
+
+	// VoteCounts maps targetID to vote count
+	VoteCounts map[PlayerID]int
+
+	// AllVotes maps voterID to their vote
+	AllVotes map[PlayerID]*PlayerID
+}

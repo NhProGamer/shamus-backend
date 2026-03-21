@@ -146,7 +146,7 @@ type VoteService interface {
 }
 
 // NightService manages the night phase actions
-// Note: This service uses in-memory state only, no context needed.
+// Note: This service uses in-memory state with some persistence for witch abilities.
 // The implementation uses the NightPhase type internally.
 type NightService interface {
 	// StartNight initializes a new night phase
@@ -161,9 +161,11 @@ type NightService interface {
 	// RecordWerewolfVictim records the werewolf vote result
 	RecordWerewolfVictim(gameID entities.GameID, victimID *entities.PlayerID)
 
-	// RecordWitchAction records the witch's actions
+	// RecordWitchAction records the witch's actions and consumes potions
+	// ctx is needed to persist the witch's ability consumption
+	// witchID identifies the witch player for ability consumption
 	// Returns error if healTargetID is provided but doesn't match the werewolf victim
-	RecordWitchAction(gameID entities.GameID, healTargetID, poisonTargetID *entities.PlayerID) error
+	RecordWitchAction(ctx context.Context, gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error
 
 	// GetPendingDeaths returns the list of players who will die at dawn
 	GetPendingDeaths(gameID entities.GameID) []entities.PlayerID
@@ -299,7 +301,7 @@ type PromptService interface {
 	) (*entities.GroupID, error)
 
 	// ResolveGroupVote manually resolves a group vote
-	ResolveGroupVote(groupID entities.GroupID) (interface{}, error)
+	ResolveGroupVote(groupID entities.GroupID) (*entities.GroupVoteResult, error)
 
 	// HasEveryoneVoted checks if all voters in a group have voted
 	HasEveryoneVoted(groupID entities.GroupID) bool

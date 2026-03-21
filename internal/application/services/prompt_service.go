@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/prompts"
+	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 	"shamus-backend/pkg/logger"
 	"sync"
@@ -17,23 +18,8 @@ import (
 // If response is nil, the prompt timed out
 type PromptCallback = ports.PromptCallback
 
-// GroupVoteResult represents the result of a group vote
-type GroupVoteResult struct {
-	// Target is the winning target (nil if no clear winner or tie)
-	Target *entities.PlayerID
-
-	// IsTie indicates if there was a tie
-	IsTie bool
-
-	// TiedTargets contains the tied targets (if IsTie is true)
-	TiedTargets []entities.PlayerID
-
-	// VoteCounts maps targetID to vote count
-	VoteCounts map[entities.PlayerID]int
-
-	// AllVotes maps voterID to their vote
-	AllVotes map[entities.PlayerID]*entities.PlayerID
-}
+// GroupVoteResult is an alias to the domain type for backward compatibility
+type GroupVoteResult = entities.GroupVoteResult
 
 // GroupVoteState holds the state of an active group vote
 type GroupVoteState struct {
@@ -154,30 +140,30 @@ func (s *PromptService) CreatePrompt(
 }
 
 // RespondToPrompt handles a player's response to a prompt
-func (s *PromptService) RespondToPrompt(ctx context.Context, promptID entities.PromptID, playerID entities.PlayerID, response json.RawMessage) error {
+func (s *PromptService) RespondToPrompt(ctx context.Context, promptID entities.PromptID, playerID entities.PlayerID, response []byte) error {
 	s.lock.Lock()
 	prompt, exists := s.prompts[promptID]
 	if !exists {
 		s.lock.Unlock()
-		return ErrPromptNotFound
+		return apperrors.ErrPromptNotFound
 	}
 
 	// Verify player owns this prompt
 	if prompt.PlayerID != playerID {
 		s.lock.Unlock()
-		return ErrPromptWrongPlayer
+		return apperrors.ErrPromptWrongPlayer
 	}
 
 	// Check if can respond
 	if !prompt.CanRespond() {
 		s.lock.Unlock()
 		if prompt.Status == entities.PromptStatusExpired {
-			return ErrPromptExpired
+			return apperrors.ErrPromptExpired
 		}
 		if prompt.Status == entities.PromptStatusAnswered && !prompt.AllowChange {
-			return ErrPromptAlreadyAnswered
+			return apperrors.ErrPromptAlreadyAnswered
 		}
-		return ErrPromptInvalidState
+		return apperrors.ErrPromptInvalidState
 	}
 
 	// Handle group vote vs individual prompt
@@ -185,7 +171,7 @@ func (s *PromptService) RespondToPrompt(ctx context.Context, promptID entities.P
 		groupState, groupExists := s.groupStates[*prompt.GroupID]
 		if !groupExists {
 			s.lock.Unlock()
-			return ErrGroupNotFound
+			return apperrors.ErrGroupNotFound
 		}
 
 		// Update vote in group state
@@ -392,12 +378,12 @@ func (s *PromptService) ResolveGroupVote(groupID entities.GroupID) (*GroupVoteRe
 	groupState, exists := s.groupStates[groupID]
 	if !exists {
 		s.lock.Unlock()
-		return nil, ErrGroupNotFound
+		return nil, apperrors.ErrGroupNotFound
 	}
 
 	if groupState.Resolved {
 		s.lock.Unlock()
-		return nil, ErrGroupAlreadyResolved
+		return nil, apperrors.ErrGroupAlreadyResolved
 	}
 
 	// Cancel group timer
@@ -456,7 +442,7 @@ func (s *PromptService) RequestMayorTiebreaker(groupID entities.GroupID, tiedTar
 	groupState, exists := s.groupStates[groupID]
 	if !exists || groupState.MayorID == nil {
 		s.lock.Unlock()
-		return ErrNoMayor
+		return apperrors.ErrNoMayor
 	}
 
 	groupState.AwaitingMayor = true
@@ -474,17 +460,17 @@ func (s *PromptService) SubmitMayorDecision(groupID entities.GroupID, mayorID en
 	groupState, exists := s.groupStates[groupID]
 	if !exists {
 		s.lock.Unlock()
-		return nil, ErrGroupNotFound
+		return nil, apperrors.ErrGroupNotFound
 	}
 
 	if !groupState.AwaitingMayor {
 		s.lock.Unlock()
-		return nil, ErrNotAwaitingMayor
+		return nil, apperrors.ErrNotAwaitingMayor
 	}
 
 	if groupState.MayorID == nil || *groupState.MayorID != mayorID {
 		s.lock.Unlock()
-		return nil, ErrNotMayor
+		return nil, apperrors.ErrNotMayor
 	}
 
 	// Verify chosen target is in tied targets
@@ -497,7 +483,7 @@ func (s *PromptService) SubmitMayorDecision(groupID entities.GroupID, mayorID en
 	}
 	if !validChoice {
 		s.lock.Unlock()
-		return nil, ErrInvalidMayorChoice
+		return nil, apperrors.ErrInvalidMayorChoice
 	}
 
 	// Create result with mayor decision

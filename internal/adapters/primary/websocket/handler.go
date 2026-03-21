@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"shamus-backend/internal/application/services"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/prompts"
+	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 	"shamus-backend/pkg/logger"
 	"time"
@@ -23,9 +23,9 @@ const wsOpTimeout = 30 * time.Second
 type Handler struct {
 	melody         *melody.Melody
 	sessions       *SessionManager
-	promptService  *services.PromptService
+	promptService  ports.PromptService
 	commandHandler *CommandHandler
-	notifier       *services.NotificationService
+	notifier       ports.NotificationService
 	playerService  ports.PlayerService
 	gameService    ports.GameService
 }
@@ -34,9 +34,9 @@ type Handler struct {
 func NewHandler(
 	m *melody.Melody,
 	sessions *SessionManager,
-	promptService *services.PromptService,
+	promptService ports.PromptService,
 	commandHandler *CommandHandler,
-	notifier *services.NotificationService,
+	notifier ports.NotificationService,
 	gameService ports.GameService,
 ) *Handler {
 	h := &Handler{
@@ -275,13 +275,13 @@ func (h *Handler) handleResponse(ctx context.Context, s *melody.Session, playerI
 		// Map errors to appropriate codes
 		code := "RESPONSE_ERROR"
 		switch err {
-		case services.ErrPromptNotFound:
+		case apperrors.ErrPromptNotFound:
 			code = "PROMPT_NOT_FOUND"
-		case services.ErrPromptWrongPlayer:
+		case apperrors.ErrPromptWrongPlayer:
 			code = "WRONG_PLAYER"
-		case services.ErrPromptExpired:
+		case apperrors.ErrPromptExpired:
 			code = "PROMPT_EXPIRED"
-		case services.ErrPromptAlreadyAnswered:
+		case apperrors.ErrPromptAlreadyAnswered:
 			code = "ALREADY_ANSWERED"
 		}
 		h.sendError(s, code, err.Error())

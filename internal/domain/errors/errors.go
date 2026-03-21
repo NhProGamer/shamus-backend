@@ -124,6 +124,25 @@ var (
 	ErrActionCancelled        = New("ACTION_CANCELLED", "action was cancelled")
 )
 
+// Prompt errors
+var (
+	ErrPromptNotFound        = New("PROMPT_NOT_FOUND", "prompt not found")
+	ErrPromptWrongPlayer     = New("PROMPT_WRONG_PLAYER", "prompt belongs to another player")
+	ErrPromptExpired         = New("PROMPT_EXPIRED", "prompt has expired")
+	ErrPromptAlreadyAnswered = New("PROMPT_ALREADY_ANSWERED", "prompt already answered")
+	ErrPromptInvalidState    = New("PROMPT_INVALID_STATE", "prompt is in an invalid state")
+)
+
+// Group vote errors
+var (
+	ErrGroupNotFound        = New("GROUP_NOT_FOUND", "group vote not found")
+	ErrGroupAlreadyResolved = New("GROUP_ALREADY_RESOLVED", "group vote already resolved")
+	ErrNoMayor              = New("NO_MAYOR", "no mayor in this game")
+	ErrNotAwaitingMayor     = New("NOT_AWAITING_MAYOR", "not awaiting mayor decision")
+	ErrNotMayor             = New("NOT_MAYOR", "player is not the mayor")
+	ErrInvalidMayorChoice   = New("INVALID_MAYOR_CHOICE", "target not in tied players")
+)
+
 // System errors
 var (
 	ErrNotImplemented = New("NOT_IMPLEMENTED", "feature not yet implemented")
