@@ -1,0 +1,1051 @@
+asyncapi: 2.6.0
+info:
+  title: Shamus WebSocket API
+  version: 1.0.0
+  description: |
+    WebSocket API for Shamus, a real-time multiplayer Werewolf/Mafia game.
+    
+    ## Connection
+    Connect to `/app/ws/{gameID}` with OIDC authentication.
+    
+    ## Message Flow
+    All messages are JSON with a `channel` field indicating the message type:
+    
+    **Server → Client:**
+    - `notification`: Informational updates (no response expected)
+    - `prompt`: Interactive requests requiring player action
+    
+    **Client → Server:**
+    - `command`: Player-initiated actions (chat, settings, etc.)
+    - `response`: Answers to prompts
+    
+    ## Game Phases
+    1. **Waiting**: Players join, host configures settings
+    2. **Night**: Werewolves vote, special roles act
+    3. **Day**: Discussion phase
+    4. **Vote**: Village votes to eliminate a player
+
+servers:
+  production:
+    url: "{host}/app/ws/{gameId}"
+    protocol: wss
+    description: WebSocket connection (requires OIDC auth)
+    variables:
+      host:
+        description: Server hostname
+        default: localhost:8080
+      gameId:
+        description: Game UUID
+
+defaultContentType: application/json
+
+channels:
+  game:
+    description: Main game channel for all WebSocket communication
+    publish:
+      operationId: receiveMessage
+      summary: Messages from server to client
+      message:
+        oneOf:
+          # Notifications
+          - $ref: '#/components/messages/GameStateNotification'
+          - $ref: '#/components/messages/PlayerJoinedNotification'
+          - $ref: '#/components/messages/PlayerLeftNotification'
+          - $ref: '#/components/messages/PlayerDiedNotification'
+          - $ref: '#/components/messages/HostChangedNotification'
+          - $ref: '#/components/messages/GameStartedNotification'
+          - $ref: '#/components/messages/GameEndedNotification'
+          - $ref: '#/components/messages/PhaseChangedNotification'
+          - $ref: '#/components/messages/RoleRevealNotification'
+          - $ref: '#/components/messages/ChatMessageNotification'
+          - $ref: '#/components/messages/VoteStartedNotification'
+          - $ref: '#/components/messages/VoteUpdateNotification'
+          - $ref: '#/components/messages/VoteResultNotification'
+          - $ref: '#/components/messages/SeerResultNotification'
+          - $ref: '#/components/messages/TimerStartedNotification'
+          - $ref: '#/components/messages/ErrorNotification'
+          - $ref: '#/components/messages/AckNotification'
+          # Prompts
+          - $ref: '#/components/messages/VotePrompt'
+          - $ref: '#/components/messages/SelectPlayerPrompt'
+          - $ref: '#/components/messages/SelectOptionPrompt'
+
+    subscribe:
+      operationId: sendMessage
+      summary: Messages from client to server
+      message:
+        oneOf:
+          # Commands
+          - $ref: '#/components/messages/SendChatCommand'
+          - $ref: '#/components/messages/UpdateSettingsCommand'
+          - $ref: '#/components/messages/StartGameCommand'
+          - $ref: '#/components/messages/LeaveGameCommand'
+          - $ref: '#/components/messages/KickPlayerCommand'
+          # Responses
+          - $ref: '#/components/messages/VoteResponse'
+          - $ref: '#/components/messages/SelectPlayerResponse'
+          - $ref: '#/components/messages/SelectOptionResponse'
+
+components:
+  messages:
+    # ==================== NOTIFICATIONS ====================
+    
+    GameStateNotification:
+      name: game_state
+      title: Game State
+      summary: Full game state sent on connection
+      payload:
+        $ref: '#/components/schemas/GameStatePayload'
+      examples:
+        - payload:
+            channel: notification
+            type: game_state
+            payload:
+              id: "550e8400-e29b-41d4-a716-446655440000"
+              status: waiting
+              phase: start
+              day: 0
+              hostId: "user-123"
+              settings:
+                roles:
+                  villager: 3
+                  werewolf: 2
+              players:
+                - id: "user-123"
+                  username: "Alice"
+                  isAlive: true
+                  connectionState: connected
+
+    PlayerJoinedNotification:
+      name: player_joined
+      title: Player Joined
+      summary: A player joined the game
+      payload:
+        $ref: '#/components/schemas/PlayerJoinedPayload'
+
+    PlayerLeftNotification:
+      name: player_left
+      title: Player Left
+      summary: A player left the game
+      payload:
+        $ref: '#/components/schemas/PlayerLeftPayload'
+
+    PlayerDiedNotification:
+      name: player_died
+      title: Player Died
+      summary: A player was eliminated
+      payload:
+        $ref: '#/components/schemas/PlayerDiedPayload'
+
+    HostChangedNotification:
+      name: host_changed
+      title: Host Changed
+      summary: The game host has changed
+      payload:
+        $ref: '#/components/schemas/HostChangedPayload'
+
+    GameStartedNotification:
+      name: game_started
+      title: Game Started
+      summary: The game has started
+      payload:
+        $ref: '#/components/schemas/GameStartedPayload'
+
+    GameEndedNotification:
+      name: game_ended
+      title: Game Ended
+      summary: The game has ended with a winner
+      payload:
+        $ref: '#/components/schemas/GameEndedPayload'
+
+    PhaseChangedNotification:
+      name: phase_changed
+      title: Phase Changed
+      summary: The game phase has changed
+      payload:
+        $ref: '#/components/schemas/PhaseChangedPayload'
+
+    RoleRevealNotification:
+      name: role_reveal
+      title: Role Reveal
+      summary: Private - reveals player's assigned role
+      payload:
+        $ref: '#/components/schemas/RoleRevealPayload'
+
+    ChatMessageNotification:
+      name: chat_message
+      title: Chat Message
+      summary: A chat message was sent
+      payload:
+        $ref: '#/components/schemas/ChatMessagePayload'
+
+    VoteStartedNotification:
+      name: vote_started
+      title: Vote Started
+      summary: A voting phase has begun
+      payload:
+        $ref: '#/components/schemas/VoteStartedPayload'
+
+    VoteUpdateNotification:
+      name: vote_update
+      title: Vote Update
+      summary: Real-time vote count update
+      payload:
+        $ref: '#/components/schemas/VoteUpdatePayload'
+
+    VoteResultNotification:
+      name: vote_result
+      title: Vote Result
+      summary: Final result of a vote
+      payload:
+        $ref: '#/components/schemas/VoteResultPayload'
+
+    SeerResultNotification:
+      name: seer_result
+      title: Seer Result
+      summary: Private - result of seer's vision
+      payload:
+        $ref: '#/components/schemas/SeerResultPayload'
+
+    TimerStartedNotification:
+      name: timer_started
+      title: Timer Started
+      summary: A phase timer has started
+      payload:
+        $ref: '#/components/schemas/TimerStartedPayload'
+
+    ErrorNotification:
+      name: error
+      title: Error
+      summary: An error occurred
+      payload:
+        $ref: '#/components/schemas/ErrorPayload'
+
+    AckNotification:
+      name: ack
+      title: Acknowledgement
+      summary: Command was processed successfully
+      payload:
+        $ref: '#/components/schemas/AckPayload'
+
+    # ==================== PROMPTS ====================
+    
+    VotePrompt:
+      name: vote_prompt
+      title: Vote Prompt
+      summary: Request to cast a vote
+      payload:
+        $ref: '#/components/schemas/VotePromptPayload'
+
+    SelectPlayerPrompt:
+      name: select_player_prompt
+      title: Select Player Prompt
+      summary: Request to select a target player
+      payload:
+        $ref: '#/components/schemas/SelectPlayerPromptPayload'
+
+    SelectOptionPrompt:
+      name: select_option_prompt
+      title: Select Option Prompt
+      summary: Request to choose from options (e.g., witch potions)
+      payload:
+        $ref: '#/components/schemas/SelectOptionPromptPayload'
+
+    # ==================== COMMANDS ====================
+    
+    SendChatCommand:
+      name: send_chat
+      title: Send Chat
+      summary: Send a chat message
+      payload:
+        $ref: '#/components/schemas/SendChatPayload'
+      examples:
+        - payload:
+            channel: command
+            type: send_chat
+            payload:
+              message: "I think Bob is suspicious!"
+              channel: village
+
+    UpdateSettingsCommand:
+      name: update_settings
+      title: Update Settings
+      summary: Update game settings (host only)
+      payload:
+        $ref: '#/components/schemas/UpdateSettingsPayload'
+
+    StartGameCommand:
+      name: start_game
+      title: Start Game
+      summary: Start the game (host only)
+      payload:
+        $ref: '#/components/schemas/StartGamePayload'
+
+    LeaveGameCommand:
+      name: leave_game
+      title: Leave Game
+      summary: Leave the current game
+      payload:
+        $ref: '#/components/schemas/LeaveGamePayload'
+
+    KickPlayerCommand:
+      name: kick_player
+      title: Kick Player
+      summary: Kick a player from the game (host only)
+      payload:
+        $ref: '#/components/schemas/KickPlayerPayload'
+
+    # ==================== RESPONSES ====================
+    
+    VoteResponse:
+      name: vote_response
+      title: Vote Response
+      summary: Response to a vote prompt
+      payload:
+        $ref: '#/components/schemas/VoteResponsePayload'
+
+    SelectPlayerResponse:
+      name: select_player_response
+      title: Select Player Response
+      summary: Response to a select player prompt
+      payload:
+        $ref: '#/components/schemas/SelectPlayerResponsePayload'
+
+    SelectOptionResponse:
+      name: select_option_response
+      title: Select Option Response
+      summary: Response to a select option prompt
+      payload:
+        $ref: '#/components/schemas/SelectOptionResponsePayload'
+
+  schemas:
+    # ==================== COMMON TYPES ====================
+    
+    GameID:
+      type: string
+      format: uuid
+      description: Unique game identifier
+
+    PlayerID:
+      type: string
+      description: Unique player identifier (OIDC subject)
+
+    PromptID:
+      type: string
+      description: Unique prompt identifier
+
+    GroupID:
+      type: string
+      description: Unique group vote identifier
+
+    GameStatus:
+      type: string
+      enum: [waiting, active, ended]
+
+    GamePhase:
+      type: string
+      enum: [start, day, night, vote]
+
+    RoleType:
+      type: string
+      enum: [villager, werewolf, seer, witch]
+
+    Clan:
+      type: string
+      enum: [village, werewolves]
+
+    ConnectionState:
+      type: string
+      enum: [connected, disconnected]
+
+    ChatChannel:
+      type: string
+      enum: [village, werewolf, dead]
+      description: |
+        - village: All alive players (day only)
+        - werewolf: Werewolves only (night)
+        - dead: Dead players only
+
+    Channel:
+      type: string
+      enum: [notification, prompt, command, response]
+
+    NotificationType:
+      type: string
+      enum:
+        - game_state
+        - player_joined
+        - player_left
+        - player_died
+        - player_inactive
+        - host_changed
+        - game_started
+        - game_ended
+        - phase_changed
+        - role_reveal
+        - chat_message
+        - vote_started
+        - vote_update
+        - vote_result
+        - mayor_tiebreaker
+        - seer_result
+        - timer_started
+        - timer_tick
+        - timer_expired
+        - error
+        - ack
+
+    CommandType:
+      type: string
+      enum: [send_chat, update_settings, start_game, leave_game, kick_player]
+
+    PromptType:
+      type: string
+      enum: [select_player, select_option, vote, confirm]
+
+    # ==================== NOTIFICATION PAYLOADS ====================
+    
+    BaseNotification:
+      type: object
+      required: [channel, type, payload]
+      properties:
+        channel:
+          type: string
+          const: notification
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        payload:
+          type: object
+
+    GameStatePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: game_state
+            payload:
+              type: object
+              required: [id, status, phase, day, hostId, settings, players]
+              properties:
+                id:
+                  $ref: '#/components/schemas/GameID'
+                status:
+                  $ref: '#/components/schemas/GameStatus'
+                phase:
+                  $ref: '#/components/schemas/GamePhase'
+                day:
+                  type: integer
+                hostId:
+                  $ref: '#/components/schemas/PlayerID'
+                settings:
+                  $ref: '#/components/schemas/GameSettings'
+                players:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PlayerInfo'
+
+    GameSettings:
+      type: object
+      required: [roles]
+      properties:
+        roles:
+          type: object
+          additionalProperties:
+            type: integer
+
+    PlayerInfo:
+      type: object
+      required: [id, username, isAlive, connectionState]
+      properties:
+        id:
+          $ref: '#/components/schemas/PlayerID'
+        username:
+          type: string
+        isAlive:
+          type: boolean
+        connectionState:
+          $ref: '#/components/schemas/ConnectionState'
+        role:
+          $ref: '#/components/schemas/RoleType'
+          description: Only visible for own player
+
+    PlayerJoinedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: player_joined
+            payload:
+              type: object
+              required: [playerId, username]
+              properties:
+                playerId:
+                  $ref: '#/components/schemas/PlayerID'
+                username:
+                  type: string
+
+    PlayerLeftPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: player_left
+            payload:
+              type: object
+              required: [playerId, username, reason]
+              properties:
+                playerId:
+                  $ref: '#/components/schemas/PlayerID'
+                username:
+                  type: string
+                reason:
+                  type: string
+                  enum: [left, kicked, disconnected]
+
+    PlayerDiedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: player_died
+            payload:
+              type: object
+              required: [playerId, username, cause]
+              properties:
+                playerId:
+                  $ref: '#/components/schemas/PlayerID'
+                username:
+                  type: string
+                cause:
+                  type: string
+                  enum: [werewolf_attack, village_vote, witch_poison]
+                role:
+                  $ref: '#/components/schemas/RoleType'
+                  description: Revealed after death
+
+    HostChangedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: host_changed
+            payload:
+              type: object
+              required: [newHostId, newHostUsername]
+              properties:
+                newHostId:
+                  $ref: '#/components/schemas/PlayerID'
+                newHostUsername:
+                  type: string
+
+    GameStartedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: game_started
+            payload:
+              type: object
+              properties:
+                playerCount:
+                  type: integer
+
+    GameEndedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: game_ended
+            payload:
+              type: object
+              required: [winner]
+              properties:
+                winner:
+                  $ref: '#/components/schemas/Clan'
+                survivors:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PlayerID'
+
+    PhaseChangedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: phase_changed
+            payload:
+              type: object
+              required: [phase, day]
+              properties:
+                phase:
+                  $ref: '#/components/schemas/GamePhase'
+                day:
+                  type: integer
+
+    RoleRevealPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: role_reveal
+            payload:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: '#/components/schemas/RoleType'
+                teammates:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PlayerID'
+                  description: For werewolves - other werewolf IDs
+
+    ChatMessagePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: chat_message
+            payload:
+              type: object
+              required: [senderId, username, message, channel, timestamp]
+              properties:
+                senderId:
+                  $ref: '#/components/schemas/PlayerID'
+                username:
+                  type: string
+                message:
+                  type: string
+                channel:
+                  $ref: '#/components/schemas/ChatChannel'
+                timestamp:
+                  type: integer
+                  description: Unix timestamp in milliseconds
+
+    VoteStartedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: vote_started
+            payload:
+              type: object
+              required: [voteType, eligibleTargets]
+              properties:
+                voteType:
+                  type: string
+                  enum: [village, werewolf]
+                eligibleTargets:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PlayerID'
+                timeout:
+                  type: integer
+                  description: Seconds until vote ends
+
+    VoteUpdatePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: vote_update
+            payload:
+              type: object
+              properties:
+                votes:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/PlayerID'
+                  description: Map of voterId -> targetId
+                abstained:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PlayerID'
+
+    VoteResultPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: vote_result
+            payload:
+              type: object
+              required: [result]
+              properties:
+                result:
+                  type: string
+                  enum: [eliminated, no_elimination, tie]
+                eliminatedId:
+                  $ref: '#/components/schemas/PlayerID'
+                eliminatedUsername:
+                  type: string
+                voteCounts:
+                  type: object
+                  additionalProperties:
+                    type: integer
+
+    SeerResultPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: seer_result
+            payload:
+              type: object
+              required: [targetId, targetUsername, isWerewolf]
+              properties:
+                targetId:
+                  $ref: '#/components/schemas/PlayerID'
+                targetUsername:
+                  type: string
+                isWerewolf:
+                  type: boolean
+
+    TimerStartedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: timer_started
+            payload:
+              type: object
+              required: [context, duration]
+              properties:
+                context:
+                  type: string
+                  description: Timer context (e.g., "day_discussion", "vote")
+                duration:
+                  type: integer
+                  description: Duration in seconds
+
+    ErrorPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: error
+            payload:
+              type: object
+              required: [code, message]
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - MISSING_CONTEXT
+                    - INVALID_JSON
+                    - INVALID_COMMAND
+                    - UNKNOWN_COMMAND
+                    - INVALID_PAYLOAD
+                    - NOT_HOST
+                    - GAME_NOT_WAITING
+                    - MESSAGE_EMPTY
+                    - MESSAGE_TOO_LONG
+                    - CHANNEL_FORBIDDEN
+                    - NOT_IN_GAME
+                    - PROMPT_NOT_FOUND
+                    - WRONG_PLAYER
+                    - PROMPT_EXPIRED
+                    - ALREADY_ANSWERED
+                message:
+                  type: string
+
+    AckPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseNotification'
+        - type: object
+          properties:
+            type:
+              const: ack
+            payload:
+              type: object
+              required: [action, success]
+              properties:
+                action:
+                  type: string
+                success:
+                  type: boolean
+                message:
+                  type: string
+
+    # ==================== PROMPT PAYLOADS ====================
+    
+    BasePrompt:
+      type: object
+      required: [channel, type, id, context, expiresAt, timeout]
+      properties:
+        channel:
+          type: string
+          const: prompt
+        type:
+          $ref: '#/components/schemas/PromptType'
+        id:
+          $ref: '#/components/schemas/PromptID'
+        context:
+          type: string
+          description: Context identifier (e.g., "village_vote", "seer_vision")
+        expiresAt:
+          type: string
+          format: date-time
+        timeout:
+          type: integer
+          description: Timeout in seconds
+        allowChange:
+          type: boolean
+          description: Can change response before timeout
+        canSkip:
+          type: boolean
+          description: Can skip without responding
+        groupId:
+          $ref: '#/components/schemas/GroupID'
+
+    VotePromptPayload:
+      allOf:
+        - $ref: '#/components/schemas/BasePrompt'
+        - type: object
+          properties:
+            type:
+              const: vote
+            payload:
+              type: object
+              required: [message, eligibleTargets, canAbstain]
+              properties:
+                message:
+                  type: string
+                eligibleTargets:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PlayerID'
+                canAbstain:
+                  type: boolean
+                currentVotes:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/PlayerID'
+                playersInfo:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/PlayerDisplayInfo'
+
+    SelectPlayerPromptPayload:
+      allOf:
+        - $ref: '#/components/schemas/BasePrompt'
+        - type: object
+          properties:
+            type:
+              const: select_player
+            payload:
+              type: object
+              required: [message, eligiblePlayers]
+              properties:
+                message:
+                  type: string
+                eligiblePlayers:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PlayerID'
+                playersInfo:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/PlayerDisplayInfo'
+
+    SelectOptionPromptPayload:
+      allOf:
+        - $ref: '#/components/schemas/BasePrompt'
+        - type: object
+          properties:
+            type:
+              const: select_option
+            payload:
+              type: object
+              required: [message, options]
+              properties:
+                message:
+                  type: string
+                options:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PromptOption'
+                victimId:
+                  $ref: '#/components/schemas/PlayerID'
+                  description: For witch - the werewolf victim
+                victimUsername:
+                  type: string
+
+    PlayerDisplayInfo:
+      type: object
+      properties:
+        username:
+          type: string
+        isAlive:
+          type: boolean
+
+    PromptOption:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        disabled:
+          type: boolean
+        disabledReason:
+          type: string
+
+    # ==================== COMMAND PAYLOADS ====================
+    
+    BaseCommand:
+      type: object
+      required: [channel, type]
+      properties:
+        channel:
+          type: string
+          const: command
+        type:
+          $ref: '#/components/schemas/CommandType'
+        payload:
+          type: object
+
+    SendChatPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseCommand'
+        - type: object
+          properties:
+            type:
+              const: send_chat
+            payload:
+              type: object
+              required: [message, channel]
+              properties:
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                channel:
+                  $ref: '#/components/schemas/ChatChannel'
+
+    UpdateSettingsPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseCommand'
+        - type: object
+          properties:
+            type:
+              const: update_settings
+            payload:
+              type: object
+              required: [roles]
+              properties:
+                roles:
+                  type: object
+                  additionalProperties:
+                    type: integer
+
+    StartGamePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseCommand'
+        - type: object
+          properties:
+            type:
+              const: start_game
+            payload:
+              type: object
+
+    LeaveGamePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseCommand'
+        - type: object
+          properties:
+            type:
+              const: leave_game
+            payload:
+              type: object
+
+    KickPlayerPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseCommand'
+        - type: object
+          properties:
+            type:
+              const: kick_player
+            payload:
+              type: object
+              required: [playerId]
+              properties:
+                playerId:
+                  $ref: '#/components/schemas/PlayerID'
+                reason:
+                  type: string
+
+    # ==================== RESPONSE PAYLOADS ====================
+    
+    BaseResponse:
+      type: object
+      required: [channel, promptId, response]
+      properties:
+        channel:
+          type: string
+          const: response
+        promptId:
+          $ref: '#/components/schemas/PromptID'
+        response:
+          type: object
+
+    VoteResponsePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            response:
+              type: object
+              properties:
+                targetId:
+                  $ref: '#/components/schemas/PlayerID'
+                abstained:
+                  type: boolean
+
+    SelectPlayerResponsePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            response:
+              type: object
+              properties:
+                playerId:
+                  $ref: '#/components/schemas/PlayerID'
+                skipped:
+                  type: boolean
+
+    SelectOptionResponsePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            response:
+              type: object
+              properties:
+                optionId:
+                  type: string
+                targetId:
+                  $ref: '#/components/schemas/PlayerID'
+                  description: For witch poison - the target
+                skipped:
+                  type: boolean

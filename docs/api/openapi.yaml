@@ -1,0 +1,290 @@
+openapi: 3.1.0
+info:
+  title: Shamus API
+  description: |
+    REST API for Shamus, a real-time multiplayer Werewolf/Mafia game.
+    
+    This API handles game creation and management. Real-time game interactions
+    (chat, voting, abilities) are handled via WebSocket - see the AsyncAPI
+    specification at `/docs/ws` for WebSocket documentation.
+  version: 1.0.0
+  contact:
+    name: Shamus Team
+  license:
+    name: MIT
+
+servers:
+  - url: /app/api/v1
+    description: Main API (requires authentication)
+
+security:
+  - oidc: []
+
+tags:
+  - name: Games
+    description: Game creation and management
+  - name: Health
+    description: Service health checks
+
+paths:
+  /game:
+    post:
+      tags:
+        - Games
+      summary: Create a new game
+      description: |
+        Creates a new game lobby with the authenticated user as host.
+        The game starts in "waiting" status until the host starts it.
+        
+        After creation, players join via WebSocket at `/app/ws/{gameID}`.
+      operationId: createGame
+      responses:
+        '200':
+          description: Game created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateGameResponse'
+              example:
+                gameID: "550e8400-e29b-41d4-a716-446655440000"
+        '400':
+          description: Missing or invalid user ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Missing user ID"
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns service health status including Redis connectivity
+      operationId: healthCheck
+      security: []
+      servers:
+        - url: /
+          description: Root path (no /app/api/v1 prefix)
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                redis: "connected"
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "unhealthy"
+                redis: "disconnected"
+
+  /ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: Indicates if the service is ready to accept traffic
+      operationId: readinessCheck
+      security: []
+      servers:
+        - url: /
+          description: Root path (no /app/api/v1 prefix)
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+        '503':
+          description: Service is not ready
+
+  /live:
+    get:
+      tags:
+        - Health
+      summary: Liveness check
+      description: Simple liveness probe - returns OK if service is running
+      operationId: livenessCheck
+      security: []
+      servers:
+        - url: /
+          description: Root path (no /app/api/v1 prefix)
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveResponse'
+              example:
+                status: "ok"
+
+components:
+  securitySchemes:
+    oidc:
+      type: openIdConnect
+      description: OIDC authentication (Keycloak)
+      openIdConnectUrl: /.well-known/openid-configuration
+
+  schemas:
+    CreateGameResponse:
+      type: object
+      required:
+        - gameID
+      properties:
+        gameID:
+          $ref: '#/components/schemas/GameID'
+      description: Response containing the created game's ID
+
+    GameID:
+      type: string
+      format: uuid
+      description: Unique identifier for a game
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+    PlayerID:
+      type: string
+      description: Unique identifier for a player (from OIDC subject)
+      example: "user-123-abc"
+
+    GameStatus:
+      type: string
+      enum:
+        - waiting
+        - active
+        - ended
+      description: Current status of the game
+
+    GamePhase:
+      type: string
+      enum:
+        - start
+        - day
+        - night
+        - vote
+      description: Current phase of an active game
+
+    RoleType:
+      type: string
+      enum:
+        - villager
+        - werewolf
+        - seer
+        - witch
+      description: Available role types in the game
+
+    GameSettings:
+      type: object
+      required:
+        - roles
+      properties:
+        roles:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+          description: Map of role type to count
+          example:
+            villager: 3
+            werewolf: 2
+            seer: 1
+            witch: 1
+
+    Game:
+      type: object
+      required:
+        - id
+        - status
+        - phase
+        - day
+        - players
+        - hostId
+        - settings
+      properties:
+        id:
+          $ref: '#/components/schemas/GameID'
+        status:
+          $ref: '#/components/schemas/GameStatus'
+        phase:
+          $ref: '#/components/schemas/GamePhase'
+        day:
+          type: integer
+          minimum: 0
+          description: Current day number (0 = night before day 1)
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerID'
+          description: List of player IDs in the game
+        hostId:
+          $ref: '#/components/schemas/PlayerID'
+        settings:
+          $ref: '#/components/schemas/GameSettings'
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+        redis:
+          type: string
+          enum:
+            - connected
+            - disconnected
+
+    ReadyResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not_ready
+
+    LiveResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
