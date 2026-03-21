@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
@@ -44,15 +45,17 @@ type NightState struct {
 type NightService struct {
 	nightStates  map[entities.GameID]*NightState
 	playerSender ports.PlayerSender
+	playerRepo   ports.PlayerRepository
 	voteService  *VoteService
 	lock         sync.RWMutex
 }
 
 // NewNightService creates a new NightService
-func NewNightService(playerSender ports.PlayerSender, voteService *VoteService) *NightService {
+func NewNightService(playerSender ports.PlayerSender, playerRepo ports.PlayerRepository, voteService *VoteService) *NightService {
 	return &NightService{
 		nightStates:  make(map[entities.GameID]*NightState),
 		playerSender: playerSender,
+		playerRepo:   playerRepo,
 		voteService:  voteService,
 	}
 }
@@ -265,9 +268,9 @@ func (s *NightService) RecordWerewolfVictim(gameID entities.GameID, victimID *en
 	}
 }
 
-// RecordWitchAction records the witch's actions
+// RecordWitchAction records the witch's actions and consumes the used potions
 // Returns error if healTargetID is provided but doesn't match the werewolf victim
-func (s *NightService) RecordWitchAction(gameID entities.GameID, healTargetID, poisonTargetID *entities.PlayerID) error {
+func (s *NightService) RecordWitchAction(ctx context.Context, gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -299,14 +302,56 @@ func (s *NightService) RecordWitchAction(gameID entities.GameID, healTargetID, p
 			}
 		}
 		state.PendingDeaths = newDeaths
+		state.WitchCanHeal = false
 	}
 
 	// If poison was used, add target to pending deaths (with uniqueness check)
 	if poisonTargetID != nil {
 		addToPendingDeaths(state, *poisonTargetID)
+		state.WitchCanPoison = false
+	}
+
+	// Consume the witch's abilities on the player entity and persist
+	if healTargetID != nil || poisonTargetID != nil {
+		if err := s.consumeWitchAbilities(ctx, witchID, healTargetID != nil, poisonTargetID != nil); err != nil {
+			logger.Get().Error().Err(err).
+				Str("witchID", string(witchID)).
+				Bool("usedHeal", healTargetID != nil).
+				Bool("usedPoison", poisonTargetID != nil).
+				Msg("Failed to consume witch abilities")
+			// Don't return error - the action was recorded, persistence failure is logged
+		}
 	}
 
 	return nil
+}
+
+// consumeWitchAbilities finds and consumes the witch's abilities, then persists the player
+func (s *NightService) consumeWitchAbilities(ctx context.Context, witchID entities.PlayerID, consumeHeal, consumePoison bool) error {
+	witch, err := s.playerRepo.GetPlayer(ctx, witchID)
+	if err != nil {
+		return err
+	}
+
+	if witch.Role == nil {
+		return nil
+	}
+
+	abilities := witch.Role.GetAbilities()
+	if abilities == nil {
+		return nil
+	}
+
+	for _, ability := range *abilities {
+		if consumeHeal && ability.GetName() == "Heal" {
+			ability.Consume()
+		}
+		if consumePoison && ability.GetName() == "Poison" {
+			ability.Consume()
+		}
+	}
+
+	return s.playerRepo.SavePlayer(ctx, witch)
 }
 
 // GetPendingDeaths returns a copy of the list of players who will die at dawn

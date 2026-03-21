@@ -661,11 +661,12 @@ func (e *GameEngineV2) handleWerewolfVoteCallback(ctx context.Context, prompt *e
 
 func (e *GameEngineV2) handleWitchPotionCallback(ctx context.Context, prompt *entities.Prompt, response []byte) error {
 	gameID := prompt.GameID
+	witchID := prompt.PlayerID
 
 	// If timeout, witch does nothing
 	if response == nil {
 		logger.Get().Info().Str("gameID", string(gameID)).Msg("Witch timed out")
-		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(ctx, gameID, witchID, nil, nil)
 		e.advanceFromCurrentNightPhase(gameID)
 		return nil
 	}
@@ -677,7 +678,7 @@ func (e *GameEngineV2) handleWitchPotionCallback(ctx context.Context, prompt *en
 	}
 
 	if resp.Skipped || resp.OptionID == "skip" {
-		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(ctx, gameID, witchID, nil, nil)
 		e.advanceFromCurrentNightPhase(gameID)
 		return nil
 	}
@@ -686,7 +687,7 @@ func (e *GameEngineV2) handleWitchPotionCallback(ctx context.Context, prompt *en
 	case "heal":
 		// Heal the victim (validation ensures this matches the werewolf victim)
 		victim := e.nightService.GetWerewolfVictim(gameID)
-		if err := e.nightService.RecordWitchAction(gameID, victim, nil); err != nil {
+		if err := e.nightService.RecordWitchAction(ctx, gameID, witchID, victim, nil); err != nil {
 			logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to record witch heal action")
 		}
 		e.advanceFromCurrentNightPhase(gameID)
@@ -694,7 +695,7 @@ func (e *GameEngineV2) handleWitchPotionCallback(ctx context.Context, prompt *en
 	case "poison":
 		// Need to ask for target
 		players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
-		e.startWitchPoisonTargetSelection(gameID, prompt.PlayerID, players)
+		e.startWitchPoisonTargetSelection(gameID, witchID, players)
 	}
 
 	return nil
@@ -739,16 +740,19 @@ func (e *GameEngineV2) startWitchPoisonTargetSelection(gameID entities.GameID, w
 
 	if err != nil {
 		logger.Get().Error().Err(err).Msg("Failed to create witch poison target prompt")
-		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
+		ctx, cancel := newInternalContext()
+		defer cancel()
+		_ = e.nightService.RecordWitchAction(ctx, gameID, witchID, nil, nil)
 		e.advanceFromCurrentNightPhase(gameID)
 	}
 }
 
 func (e *GameEngineV2) handleWitchPoisonTargetCallback(ctx context.Context, prompt *entities.Prompt, response []byte) error {
 	gameID := prompt.GameID
+	witchID := prompt.PlayerID
 
 	if response == nil {
-		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(ctx, gameID, witchID, nil, nil)
 		e.advanceFromCurrentNightPhase(gameID)
 		return nil
 	}
@@ -759,9 +763,9 @@ func (e *GameEngineV2) handleWitchPoisonTargetCallback(ctx context.Context, prom
 	}
 
 	if resp.Skipped || resp.PlayerID == nil {
-		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(ctx, gameID, witchID, nil, nil)
 	} else {
-		_ = e.nightService.RecordWitchAction(gameID, nil, resp.PlayerID)
+		_ = e.nightService.RecordWitchAction(ctx, gameID, witchID, nil, resp.PlayerID)
 	}
 
 	e.advanceFromCurrentNightPhase(gameID)

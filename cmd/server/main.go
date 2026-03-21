@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"shamus-backend/internal/adapters/primary/http/controllers"
+	"shamus-backend/internal/adapters/primary/http/routes"
 	"shamus-backend/internal/adapters/primary/websocket"
 	redisadapter "shamus-backend/internal/adapters/secondary/redis"
 	"shamus-backend/internal/application/orchestration"
 	"shamus-backend/internal/application/services"
 	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/infrastructure/config"
-	"shamus-backend/internal/adapters/primary/http/controllers"
-	"shamus-backend/internal/adapters/primary/http/routes"
 	"shamus-backend/pkg/logger"
 	"strconv"
 	"syscall"
@@ -112,7 +112,7 @@ func main() {
 	// === GAME ENGINE SERVICES ===
 	// VoteService for legacy compatibility (used by NightService)
 	voteService := services.NewVoteService(voteRepo, sessionManager, sessionManager)
-	nightService := services.NewNightService(sessionManager, voteService)
+	nightService := services.NewNightService(sessionManager, playerRepo, voteService)
 
 	// === GAME ENGINE V2 ===
 	// Orchestrates game flow using Prompt/Notification architecture
