@@ -113,13 +113,55 @@ func (s *NightService) StartNight(gameID entities.GameID, players []*entities.Pl
 	return state
 }
 
-// GetNightState returns the current night state for a game
+// GetNightState returns a copy of the current night state for a game
+// This returns a copy to prevent external modification of internal state
 func (s *NightService) GetNightState(gameID entities.GameID) (*NightState, bool) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
 	state, exists := s.nightStates[gameID]
-	return state, exists
+	if !exists {
+		return nil, false
+	}
+
+	// Return a deep copy to prevent external modification
+	stateCopy := *state
+
+	// Copy slices to prevent shared references
+	if state.PendingDeaths != nil {
+		stateCopy.PendingDeaths = make([]entities.PlayerID, len(state.PendingDeaths))
+		copy(stateCopy.PendingDeaths, state.PendingDeaths)
+	}
+
+	// Copy pointer values
+	if state.SeerAction != nil {
+		seerCopy := *state.SeerAction
+		if state.SeerAction.Result != nil {
+			resultCopy := *state.SeerAction.Result
+			seerCopy.Result = &resultCopy
+		}
+		stateCopy.SeerAction = &seerCopy
+	}
+
+	if state.WerewolfVictim != nil {
+		victimCopy := *state.WerewolfVictim
+		stateCopy.WerewolfVictim = &victimCopy
+	}
+
+	if state.WitchAction != nil {
+		witchCopy := *state.WitchAction
+		if state.WitchAction.HealTargetID != nil {
+			healCopy := *state.WitchAction.HealTargetID
+			witchCopy.HealTargetID = &healCopy
+		}
+		if state.WitchAction.PoisonTargetID != nil {
+			poisonCopy := *state.WitchAction.PoisonTargetID
+			witchCopy.PoisonTargetID = &poisonCopy
+		}
+		stateCopy.WitchAction = &witchCopy
+	}
+
+	return &stateCopy, true
 }
 
 // GetCurrentPhase returns the current night phase
@@ -256,7 +298,7 @@ func (s *NightService) RecordWitchAction(gameID entities.GameID, healTargetID, p
 	}
 }
 
-// GetPendingDeaths returns the list of players who will die at dawn
+// GetPendingDeaths returns a copy of the list of players who will die at dawn
 func (s *NightService) GetPendingDeaths(gameID entities.GameID) []entities.PlayerID {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
@@ -266,20 +308,25 @@ func (s *NightService) GetPendingDeaths(gameID entities.GameID) []entities.Playe
 		return nil
 	}
 
-	return state.PendingDeaths
+	// Return a copy to prevent external modification
+	result := make([]entities.PlayerID, len(state.PendingDeaths))
+	copy(result, state.PendingDeaths)
+	return result
 }
 
-// GetWerewolfVictim returns the werewolf victim (before witch intervention)
+// GetWerewolfVictim returns a copy of the werewolf victim (before witch intervention)
 func (s *NightService) GetWerewolfVictim(gameID entities.GameID) *entities.PlayerID {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
 	state, exists := s.nightStates[gameID]
-	if !exists {
+	if !exists || state.WerewolfVictim == nil {
 		return nil
 	}
 
-	return state.WerewolfVictim
+	// Return a copy to prevent external modification
+	victimCopy := *state.WerewolfVictim
+	return &victimCopy
 }
 
 // IsNightComplete checks if all night actions are done
