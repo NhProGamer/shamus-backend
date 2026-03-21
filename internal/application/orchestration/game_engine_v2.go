@@ -333,7 +333,11 @@ func (e *GameEngineV2) TransitionToDay(gameID entities.GameID) error {
 	e.nightService.ClearNight(gameID)
 
 	// Refresh players and check win condition
-	players, _ = e.playerRepo.GetPlayersByGame(ctx, gameID)
+	players, err = e.playerRepo.GetPlayersByGame(ctx, gameID)
+	if err != nil {
+		logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to get players for win condition check")
+		return err
+	}
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
 		return e.EndGame(gameID, game, winResult)
@@ -638,7 +642,10 @@ func (e *GameEngineV2) handleWerewolfVoteCallback(ctx context.Context, prompt *e
 	}
 
 	// Notify werewolves of result
-	state, _ := e.promptService.GetGroupState(groupID)
+	state, exists := e.promptService.GetGroupState(groupID)
+	if !exists {
+		logger.Get().Warn().Str("groupID", string(groupID)).Msg("Group state not found for vote notification")
+	}
 	if state != nil {
 		e.notifier.NotifyVoteResult(
 			gameID,
@@ -696,7 +703,12 @@ func (e *GameEngineV2) handleWitchPotionCallback(ctx context.Context, prompt *en
 
 	case "poison":
 		// Need to ask for target
-		players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
+		players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
+		if err != nil {
+			logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to get players for witch poison selection")
+			e.advanceFromCurrentNightPhase(gameID)
+			return err
+		}
 		e.startWitchPoisonTargetSelection(gameID, witchID, players)
 	}
 
@@ -791,7 +803,10 @@ func (e *GameEngineV2) handleVillageVoteCallback(ctx context.Context, prompt *en
 	// Check for tie
 	if result.IsTie {
 		// Check if there's a mayor
-		state, _ := e.promptService.GetGroupState(groupID)
+		state, exists := e.promptService.GetGroupState(groupID)
+		if !exists {
+			logger.Get().Warn().Str("groupID", string(groupID)).Msg("Group state not found for tie resolution")
+		}
 		if state != nil && state.HasMayor && state.MayorID != nil {
 			// Request mayor tiebreaker
 			e.promptService.RequestMayorTiebreaker(groupID, result.TiedTargets, result.VoteCounts)
@@ -822,10 +837,18 @@ func (e *GameEngineV2) handleVillageVoteCallback(ctx context.Context, prompt *en
 	e.mu.Unlock()
 
 	// Check win condition and transition
-	players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
+	players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
+	if err != nil {
+		logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to get players for win condition check")
+		return err
+	}
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
-		game, _ := e.gameRepo.GetGame(ctx, gameID)
+		game, err := e.gameRepo.GetGame(ctx, gameID)
+		if err != nil {
+			logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to get game for end game")
+			return err
+		}
 		return e.EndGame(gameID, game, winResult)
 	}
 
@@ -837,7 +860,11 @@ func (e *GameEngineV2) createMayorTiebreakerPrompt(gameID entities.GameID, mayor
 	ctx, cancel := newInternalContext()
 	defer cancel()
 
-	players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
+	players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
+	if err != nil {
+		logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to get players for mayor tiebreaker prompt")
+		return
+	}
 	playersInfo := make(map[entities.PlayerID]prompts.PlayerInfo)
 	for _, p := range players {
 		playersInfo[p.ID] = prompts.PlayerInfo{
@@ -852,7 +879,7 @@ func (e *GameEngineV2) createMayorTiebreakerPrompt(gameID entities.GameID, mayor
 		PlayersInfo:     playersInfo,
 	}
 
-	_, err := e.promptService.CreatePrompt(
+	_, promptErr := e.promptService.CreatePrompt(
 		gameID,
 		mayorID,
 		entities.PromptSelectPlayer,
@@ -862,8 +889,8 @@ func (e *GameEngineV2) createMayorTiebreakerPrompt(gameID entities.GameID, mayor
 		false, // can't skip
 	)
 
-	if err != nil {
-		logger.Get().Error().Err(err).Msg("Failed to create mayor tiebreaker prompt")
+	if promptErr != nil {
+		logger.Get().Error().Err(promptErr).Msg("Failed to create mayor tiebreaker prompt")
 		// If we can't create prompt, no one dies
 		e.notifier.NotifyVoteResult(gameID, "village", nil, true, tiedPlayers, nil, false)
 		e.TransitionToNight(gameID)
@@ -897,10 +924,18 @@ func (e *GameEngineV2) handleMayorTiebreakerCallback(ctx context.Context, prompt
 	e.notifier.NotifyVoteResult(gameID, "village", resp.PlayerID, false, nil, nil, true)
 
 	// Check win condition
-	players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
+	players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
+	if err != nil {
+		logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to get players for win condition check")
+		return err
+	}
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
-		game, _ := e.gameRepo.GetGame(ctx, gameID)
+		game, err := e.gameRepo.GetGame(ctx, gameID)
+		if err != nil {
+			logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to get game for end game")
+			return err
+		}
 		return e.EndGame(gameID, game, winResult)
 	}
 
