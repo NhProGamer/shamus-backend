@@ -9,6 +9,7 @@ import (
 	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
 	"shamus-backend/pkg/logger"
+	"sync"
 	"time"
 )
 
@@ -37,9 +38,15 @@ type GameEngineV2 struct {
 	notifier      *services.NotificationService
 	nightService  *services.NightService
 
-	// Active group votes
+	// Mutex to protect concurrent access to engine state
+	mu sync.RWMutex
+
+	// Active group votes (protected by mu)
 	activeWerewolfVote *entities.GroupID
 	activeVillageVote  *entities.GroupID
+
+	// Day phase timers - cancellable (protected by mu)
+	dayTimers map[entities.GameID]*time.Timer
 }
 
 // NewGameEngineV2 creates a new GameEngineV2
@@ -56,6 +63,7 @@ func NewGameEngineV2(
 		promptService: promptService,
 		notifier:      notifier,
 		nightService:  nightService,
+		dayTimers:     make(map[entities.GameID]*time.Timer),
 	}
 
 	// Register prompt callbacks
@@ -214,7 +222,9 @@ func (e *GameEngineV2) startWerewolfVotePhase(gameID entities.GameID, players []
 		return
 	}
 
+	e.mu.Lock()
 	e.activeWerewolfVote = groupID
+	e.mu.Unlock()
 }
 
 // startWitchPhase creates prompts for the witch
@@ -323,11 +333,17 @@ func (e *GameEngineV2) TransitionToDay(gameID entities.GameID) error {
 	// Notify phase change
 	e.notifier.NotifyPhaseChanged(gameID, entities.PhaseDay, game.Day, "")
 
-	// Start day timer - after timeout, transition to vote
-	go func() {
-		time.Sleep(DayPhaseDurationV2)
+	// Start cancellable day timer - after timeout, transition to vote
+	e.mu.Lock()
+	// Cancel any existing timer for this game
+	if existingTimer, exists := e.dayTimers[gameID]; exists {
+		existingTimer.Stop()
+	}
+	// Create new timer
+	e.dayTimers[gameID] = time.AfterFunc(DayPhaseDurationV2, func() {
 		e.TransitionToVote(gameID)
-	}()
+	})
+	e.mu.Unlock()
 
 	logger.Get().Info().
 		Str("gameID", string(gameID)).
@@ -391,7 +407,9 @@ func (e *GameEngineV2) TransitionToVote(gameID entities.GameID) error {
 		return err
 	}
 
+	e.mu.Lock()
 	e.activeVillageVote = groupID
+	e.mu.Unlock()
 
 	logger.Get().Info().
 		Str("gameID", string(gameID)).
@@ -492,7 +510,18 @@ func (e *GameEngineV2) CheckWinCondition(players []*entities.Player) *WinResult 
 
 // EndGame ends the game
 func (e *GameEngineV2) EndGame(gameID entities.GameID, game *entities.Game, result *WinResult) error {
-	// Clean up
+	// Cancel day timer if running
+	e.mu.Lock()
+	if timer, exists := e.dayTimers[gameID]; exists {
+		timer.Stop()
+		delete(e.dayTimers, gameID)
+	}
+	// Clear active votes
+	e.activeWerewolfVote = nil
+	e.activeVillageVote = nil
+	e.mu.Unlock()
+
+	// Clean up other resources
 	e.nightService.ClearNight(gameID)
 	e.promptService.CleanupGame(gameID)
 
@@ -600,7 +629,9 @@ func (e *GameEngineV2) handleWerewolfVoteCallback(prompt *entities.Prompt, respo
 		)
 	}
 
+	e.mu.Lock()
 	e.activeWerewolfVote = nil
+	e.mu.Unlock()
 
 	// Advance to next phase
 	e.advanceFromCurrentNightPhase(gameID)
@@ -744,7 +775,9 @@ func (e *GameEngineV2) handleVillageVoteCallback(prompt *entities.Prompt, respon
 
 		// No mayor - no one dies
 		e.notifier.NotifyVoteResult(gameID, "village", nil, true, result.TiedTargets, result.VoteCounts, false)
+		e.mu.Lock()
 		e.activeVillageVote = nil
+		e.mu.Unlock()
 		e.TransitionToNight(gameID)
 		return nil
 	}
@@ -756,7 +789,9 @@ func (e *GameEngineV2) handleVillageVoteCallback(prompt *entities.Prompt, respon
 
 	e.notifier.NotifyVoteResult(gameID, "village", result.Target, false, nil, result.VoteCounts, false)
 
+	e.mu.Lock()
 	e.activeVillageVote = nil
+	e.mu.Unlock()
 
 	// Check win condition and transition
 	players, _ := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
