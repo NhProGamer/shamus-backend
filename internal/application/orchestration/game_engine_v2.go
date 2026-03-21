@@ -645,7 +645,7 @@ func (e *GameEngineV2) handleWitchPotionCallback(prompt *entities.Prompt, respon
 	// If timeout, witch does nothing
 	if response == nil {
 		logger.Get().Info().Str("gameID", string(gameID)).Msg("Witch timed out")
-		e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
 		e.advanceFromCurrentNightPhase(gameID)
 		return nil
 	}
@@ -657,16 +657,18 @@ func (e *GameEngineV2) handleWitchPotionCallback(prompt *entities.Prompt, respon
 	}
 
 	if resp.Skipped || resp.OptionID == "skip" {
-		e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
 		e.advanceFromCurrentNightPhase(gameID)
 		return nil
 	}
 
 	switch resp.OptionID {
 	case "heal":
-		// Heal the victim
+		// Heal the victim (validation ensures this matches the werewolf victim)
 		victim := e.nightService.GetWerewolfVictim(gameID)
-		e.nightService.RecordWitchAction(gameID, victim, nil)
+		if err := e.nightService.RecordWitchAction(gameID, victim, nil); err != nil {
+			logger.Get().Error().Err(err).Str("gameID", string(gameID)).Msg("Failed to record witch heal action")
+		}
 		e.advanceFromCurrentNightPhase(gameID)
 
 	case "poison":
@@ -717,7 +719,7 @@ func (e *GameEngineV2) startWitchPoisonTargetSelection(gameID entities.GameID, w
 
 	if err != nil {
 		logger.Get().Error().Err(err).Msg("Failed to create witch poison target prompt")
-		e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
 		e.advanceFromCurrentNightPhase(gameID)
 	}
 }
@@ -726,7 +728,7 @@ func (e *GameEngineV2) handleWitchPoisonTargetCallback(prompt *entities.Prompt, 
 	gameID := prompt.GameID
 
 	if response == nil {
-		e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
 		e.advanceFromCurrentNightPhase(gameID)
 		return nil
 	}
@@ -737,9 +739,9 @@ func (e *GameEngineV2) handleWitchPoisonTargetCallback(prompt *entities.Prompt, 
 	}
 
 	if resp.Skipped || resp.PlayerID == nil {
-		e.nightService.RecordWitchAction(gameID, nil, nil)
+		_ = e.nightService.RecordWitchAction(gameID, nil, nil)
 	} else {
-		e.nightService.RecordWitchAction(gameID, nil, resp.PlayerID)
+		_ = e.nightService.RecordWitchAction(gameID, nil, resp.PlayerID)
 	}
 
 	e.advanceFromCurrentNightPhase(gameID)

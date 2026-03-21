@@ -2,10 +2,11 @@ package services
 
 import (
 	"encoding/json"
-	"shamus-backend/pkg/logger"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
+	apperrors "shamus-backend/internal/domain/errors"
 	"shamus-backend/internal/domain/ports"
+	"shamus-backend/pkg/logger"
 	"sync"
 )
 
@@ -265,13 +266,21 @@ func (s *NightService) RecordWerewolfVictim(gameID entities.GameID, victimID *en
 }
 
 // RecordWitchAction records the witch's actions
-func (s *NightService) RecordWitchAction(gameID entities.GameID, healTargetID, poisonTargetID *entities.PlayerID) {
+// Returns error if healTargetID is provided but doesn't match the werewolf victim
+func (s *NightService) RecordWitchAction(gameID entities.GameID, healTargetID, poisonTargetID *entities.PlayerID) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	state, exists := s.nightStates[gameID]
 	if !exists {
-		return
+		return apperrors.ErrGameNotFound
+	}
+
+	// Validate heal target: witch can only heal the werewolf victim
+	if healTargetID != nil {
+		if state.WerewolfVictim == nil || *healTargetID != *state.WerewolfVictim {
+			return apperrors.ErrCanOnlyHealVictim
+		}
 	}
 
 	state.WitchAction = &WitchAction{
@@ -296,6 +305,8 @@ func (s *NightService) RecordWitchAction(gameID entities.GameID, healTargetID, p
 	if poisonTargetID != nil {
 		addToPendingDeaths(state, *poisonTargetID)
 	}
+
+	return nil
 }
 
 // GetPendingDeaths returns a copy of the list of players who will die at dawn

@@ -150,7 +150,8 @@ type NightService interface {
 	RecordWerewolfVictim(gameID entities.GameID, victimID *entities.PlayerID)
 
 	// RecordWitchAction records the witch's actions
-	RecordWitchAction(gameID entities.GameID, healTargetID, poisonTargetID *entities.PlayerID)
+	// Returns error if healTargetID is provided but doesn't match the werewolf victim
+	RecordWitchAction(gameID entities.GameID, healTargetID, poisonTargetID *entities.PlayerID) error
 
 	// GetPendingDeaths returns the list of players who will die at dawn
 	GetPendingDeaths(gameID entities.GameID) []entities.PlayerID
