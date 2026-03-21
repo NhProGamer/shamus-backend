@@ -413,3 +413,14 @@ func (h *Handler) SendToPlayer(playerID entities.PlayerID, payload []byte) error
 func (h *Handler) BroadcastToGame(gameID entities.GameID, payload []byte) error {
 	return h.sessions.BroadcastToGame(gameID, payload)
 }
+
+// DisconnectPlayer implements ports.PlayerDisconnecter interface
+// Used when a player is kicked from a game to forcefully close their WebSocket connection
+func (h *Handler) DisconnectPlayer(gameID entities.GameID, playerID entities.PlayerID, reason string) {
+	if err := h.sessions.DisconnectPlayer(playerID, reason); err != nil {
+		logger.Get().Warn().Err(err).
+			Str("playerID", string(playerID)).
+			Str("gameID", string(gameID)).
+			Msg("Failed to disconnect player")
+	}
+}

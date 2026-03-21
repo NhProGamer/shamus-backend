@@ -159,6 +159,20 @@ func (m *SessionManager) SendToPlayers(playerIDs []entities.PlayerID, payload []
 	}
 }
 
+// DisconnectPlayer forcefully closes a player's WebSocket connection
+// Returns nil if the player is not connected (already disconnected)
+func (m *SessionManager) DisconnectPlayer(playerID entities.PlayerID, reason string) error {
+	m.lock.RLock()
+	session, exists := m.playerSessions[playerID]
+	m.lock.RUnlock()
+
+	if !exists {
+		return nil // Already disconnected
+	}
+
+	return session.CloseWithMsg([]byte(reason))
+}
+
 // Errors
 var (
 	ErrPlayerNotConnected = errors.New("player not connected")

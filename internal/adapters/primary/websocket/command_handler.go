@@ -20,6 +20,7 @@ type CommandHandler struct {
 	chatService   ports.ChatService
 	notifier      *services.NotificationService
 	gameEngine    ports.GameEngine
+	disconnecter  ports.PlayerDisconnecter
 }
 
 // NewCommandHandler creates a new CommandHandler
@@ -35,6 +36,11 @@ func NewCommandHandler(
 		chatService:   chatService,
 		notifier:      notifier,
 	}
+}
+
+// SetDisconnecter sets the player disconnecter (for breaking circular dependency)
+func (h *CommandHandler) SetDisconnecter(d ports.PlayerDisconnecter) {
+	h.disconnecter = d
 }
 
 // SetGameEngine sets the game engine (for breaking circular dependency)
@@ -264,7 +270,7 @@ func (h *CommandHandler) handleKickPlayer(cmdCtx *CommandContext, payload json.R
 		return err
 	}
 
-	// Notify the kicked player
+	// Notify the kicked player before disconnecting
 	h.notifier.NotifyError(kickPayload.PlayerID, "KICKED", "You have been kicked from the game", "")
 
 	// Notify others
@@ -274,11 +280,24 @@ func (h *CommandHandler) handleKickPlayer(cmdCtx *CommandContext, payload json.R
 	}
 	h.notifier.NotifyPlayerLeft(cmdCtx.GameID, kickPayload.PlayerID, playerToKick.Username, reason)
 
+	// Remove the player from the game
+	if err := h.playerService.LeaveGame(cmdCtx.Ctx, kickPayload.PlayerID); err != nil {
+		logger.Get().Error().Err(err).
+			Str("playerID", string(kickPayload.PlayerID)).
+			Msg("Failed to remove kicked player from game")
+		// Continue anyway - we still want to disconnect the player
+	}
+
+	// Force disconnect the player's WebSocket session
+	if h.disconnecter != nil {
+		h.disconnecter.DisconnectPlayer(cmdCtx.GameID, kickPayload.PlayerID, "kicked")
+	}
+
 	logger.Get().Info().
 		Str("gameID", string(cmdCtx.GameID)).
 		Str("hostID", string(cmdCtx.PlayerID)).
 		Str("kickedID", string(kickPayload.PlayerID)).
-		Msg("Player kicked")
+		Msg("Player kicked and disconnected")
 
 	return nil
 }

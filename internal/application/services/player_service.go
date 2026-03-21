@@ -232,6 +232,48 @@ func (s *PlayerService) HandleDisconnect(ctx context.Context, gameID entities.Ga
 	return nil
 }
 
+// LeaveGame removes a player from their current game
+// This is used when a player is kicked - it removes them without triggering full disconnect logic
+func (s *PlayerService) LeaveGame(ctx context.Context, playerID entities.PlayerID) error {
+	player, err := s.playerRepo.GetPlayer(ctx, playerID)
+	if err != nil {
+		return err
+	}
+
+	if player.GameID == nil {
+		return nil // Player not in a game
+	}
+
+	gameID := *player.GameID
+
+	game, err := s.gameRepo.GetGame(ctx, gameID)
+	if err != nil {
+		return err
+	}
+
+	// Only handle leaving during waiting state (kicks only allowed in waiting state)
+	if game.Status != entities.GameStatusWaiting {
+		return nil
+	}
+
+	// Remove player from game
+	if err := s.playerRepo.RemovePlayerFromGame(ctx, gameID, playerID); err != nil {
+		return err
+	}
+	if err := s.playerRepo.DeletePlayer(ctx, playerID); err != nil {
+		return err
+	}
+
+	// Remove from game.Players slice
+	game.Players = removePlayerFromSlice(game.Players, playerID)
+
+	if err := s.gameRepo.SaveGame(ctx, game); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GetPlayer retrieves a player by ID
 func (s *PlayerService) GetPlayer(ctx context.Context, id entities.PlayerID) (*entities.Player, error) {
 	return s.playerRepo.GetPlayer(ctx, id)

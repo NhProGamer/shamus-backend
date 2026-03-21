@@ -48,6 +48,16 @@ type PlayerService interface {
 	// IsPlayerConnected checks if a player has an active WebSocket session
 	// Note: This is an in-memory check and does not need context
 	IsPlayerConnected(playerID entities.PlayerID) bool
+
+	// LeaveGame removes a player from their current game
+	LeaveGame(ctx context.Context, playerID entities.PlayerID) error
+}
+
+// PlayerDisconnecter allows forcing disconnection of a player's WebSocket session
+// This is used when a player is kicked from a game
+type PlayerDisconnecter interface {
+	// DisconnectPlayer forcefully closes a player's WebSocket connection
+	DisconnectPlayer(gameID entities.GameID, playerID entities.PlayerID, reason string)
 }
 
 // EventService defines operations for sending events to players

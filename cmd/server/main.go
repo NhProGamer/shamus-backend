@@ -108,6 +108,7 @@ func main() {
 	// Inject PlayerService into WebSocket handler and CommandHandler
 	wsHandler.SetPlayerService(playerService)
 	commandHandler.SetPlayerService(playerService)
+	commandHandler.SetDisconnecter(wsHandler) // For kicking players
 
 	// === GAME ENGINE SERVICES ===
 	// VoteService for legacy compatibility (used by NightService)
