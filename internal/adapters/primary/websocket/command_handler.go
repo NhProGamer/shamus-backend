@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"shamus-backend/internal/application/services"
@@ -48,31 +49,32 @@ func (h *CommandHandler) SetPlayerService(ps ports.PlayerService) {
 
 // CommandContext contains information about the command context
 type CommandContext struct {
+	Ctx      context.Context // Go context for cancellation/timeout
 	GameID   entities.GameID
 	PlayerID entities.PlayerID
 	Username string
 }
 
 // Handle processes a command from a client
-func (h *CommandHandler) Handle(ctx *CommandContext, cmd *entities.Command) error {
+func (h *CommandHandler) Handle(cmdCtx *CommandContext, cmd *entities.Command) error {
 	switch cmd.Type {
 	case entities.CmdSendChat:
-		return h.handleSendChat(ctx, cmd.Payload)
+		return h.handleSendChat(cmdCtx, cmd.Payload)
 	case entities.CmdUpdateSettings:
-		return h.handleUpdateSettings(ctx, cmd.Payload)
+		return h.handleUpdateSettings(cmdCtx, cmd.Payload)
 	case entities.CmdStartGame:
-		return h.handleStartGame(ctx)
+		return h.handleStartGame(cmdCtx)
 	case entities.CmdLeaveGame:
-		return h.handleLeaveGame(ctx)
+		return h.handleLeaveGame(cmdCtx)
 	case entities.CmdKickPlayer:
-		return h.handleKickPlayer(ctx, cmd.Payload)
+		return h.handleKickPlayer(cmdCtx, cmd.Payload)
 	default:
 		return ErrUnknownCommand
 	}
 }
 
 // handleSendChat processes a chat message command
-func (h *CommandHandler) handleSendChat(ctx *CommandContext, payload json.RawMessage) error {
+func (h *CommandHandler) handleSendChat(cmdCtx *CommandContext, payload json.RawMessage) error {
 	chatPayload, err := commands.ParseSendChatPayload(payload)
 	if err != nil {
 		logger.Get().Warn().Err(err).Msg("Failed to parse chat payload")
@@ -88,13 +90,13 @@ func (h *CommandHandler) handleSendChat(ctx *CommandContext, payload json.RawMes
 	}
 
 	// Get game for phase info
-	game, err := h.gameService.GetGame(ctx.GameID)
+	game, err := h.gameService.GetGame(cmdCtx.Ctx, cmdCtx.GameID)
 	if err != nil {
 		return err
 	}
 
 	// Get sender player info
-	sender, err := h.playerService.GetPlayer(ctx.PlayerID)
+	sender, err := h.playerService.GetPlayer(cmdCtx.Ctx, cmdCtx.PlayerID)
 	if err != nil {
 		return err
 	}
@@ -119,18 +121,18 @@ func (h *CommandHandler) handleSendChat(ctx *CommandContext, payload json.RawMes
 	}
 
 	// Get recipients
-	recipients, err := h.getChannelRecipients(ctx.GameID, chatChannel, game)
+	recipients, err := h.getChannelRecipients(cmdCtx, chatChannel, game)
 	if err != nil {
 		return err
 	}
 
 	// Send chat notification to recipients
 	timestamp := time.Now().UnixMilli()
-	h.notifier.NotifyChatMessage(recipients, ctx.PlayerID, ctx.Username, chatPayload.Message, chatChannel, timestamp)
+	h.notifier.NotifyChatMessage(recipients, cmdCtx.PlayerID, cmdCtx.Username, chatPayload.Message, chatChannel, timestamp)
 
 	logger.Get().Info().
-		Str("gameID", string(ctx.GameID)).
-		Str("playerID", string(ctx.PlayerID)).
+		Str("gameID", string(cmdCtx.GameID)).
+		Str("playerID", string(cmdCtx.PlayerID)).
 		Str("channel", chatChannel).
 		Msg("Chat message sent")
 
@@ -138,7 +140,7 @@ func (h *CommandHandler) handleSendChat(ctx *CommandContext, payload json.RawMes
 }
 
 // handleUpdateSettings processes a settings update command
-func (h *CommandHandler) handleUpdateSettings(ctx *CommandContext, payload json.RawMessage) error {
+func (h *CommandHandler) handleUpdateSettings(cmdCtx *CommandContext, payload json.RawMessage) error {
 	settingsPayload, err := commands.ParseUpdateSettingsPayload(payload)
 	if err != nil {
 		logger.Get().Warn().Err(err).Msg("Failed to parse settings payload")
@@ -151,33 +153,33 @@ func (h *CommandHandler) handleUpdateSettings(ctx *CommandContext, payload json.
 	}
 
 	// Call service to update settings (validates host + game state + roles)
-	_, err = h.gameService.UpdateSettings(ctx.GameID, ctx.PlayerID, newSettings)
+	_, err = h.gameService.UpdateSettings(cmdCtx.Ctx, cmdCtx.GameID, cmdCtx.PlayerID, newSettings)
 	if err != nil {
 		return err
 	}
 
 	// Notify all players of new settings
 	// The notification could include the new settings, but for simplicity we just send game state
-	game, _ := h.gameService.GetGame(ctx.GameID)
+	game, _ := h.gameService.GetGame(cmdCtx.Ctx, cmdCtx.GameID)
 	if game != nil {
 		// Send a simplified settings notification
-		h.notifier.NotifyAll(ctx.GameID, entities.NotificationType("settings_changed"), map[string]interface{}{
+		h.notifier.NotifyAll(cmdCtx.GameID, entities.NotificationType("settings_changed"), map[string]interface{}{
 			"roles": game.Settings.Roles,
 		})
 	}
 
 	logger.Get().Info().
-		Str("gameID", string(ctx.GameID)).
-		Str("playerID", string(ctx.PlayerID)).
+		Str("gameID", string(cmdCtx.GameID)).
+		Str("playerID", string(cmdCtx.PlayerID)).
 		Msg("Game settings updated")
 
 	return nil
 }
 
 // handleStartGame processes a start game command
-func (h *CommandHandler) handleStartGame(ctx *CommandContext) error {
+func (h *CommandHandler) handleStartGame(cmdCtx *CommandContext) error {
 	// Start the game
-	game, players, err := h.gameService.StartGame(ctx.GameID, ctx.PlayerID)
+	game, players, err := h.gameService.StartGame(cmdCtx.Ctx, cmdCtx.GameID, cmdCtx.PlayerID)
 	if err != nil {
 		return err
 	}
@@ -193,42 +195,42 @@ func (h *CommandHandler) handleStartGame(ctx *CommandContext) error {
 	}
 
 	// Notify game started
-	h.notifier.NotifyGameStarted(ctx.GameID, game.Day)
+	h.notifier.NotifyGameStarted(cmdCtx.GameID, game.Day)
 
 	// Start the game flow (triggers first night phase)
 	if h.gameEngine != nil {
-		if err := h.gameEngine.StartGameFlow(ctx.GameID); err != nil {
+		if err := h.gameEngine.StartGameFlow(cmdCtx.Ctx, cmdCtx.GameID); err != nil {
 			logger.Get().Error().
-				Str("gameID", string(ctx.GameID)).
+				Str("gameID", string(cmdCtx.GameID)).
 				Err(err).
 				Msg("Error starting game flow")
 		}
 	}
 
 	logger.Get().Info().
-		Str("gameID", string(ctx.GameID)).
-		Str("hostID", string(ctx.PlayerID)).
+		Str("gameID", string(cmdCtx.GameID)).
+		Str("hostID", string(cmdCtx.PlayerID)).
 		Msg("Game started")
 
 	return nil
 }
 
 // handleLeaveGame processes a leave game command
-func (h *CommandHandler) handleLeaveGame(ctx *CommandContext) error {
+func (h *CommandHandler) handleLeaveGame(cmdCtx *CommandContext) error {
 	// This is handled by the WebSocket disconnect, but we can trigger it manually
 	// For now, we just acknowledge the intent - actual leave happens on disconnect
-	h.notifier.NotifyAck(ctx.PlayerID, "leave_game", true, "Disconnecting...")
+	h.notifier.NotifyAck(cmdCtx.PlayerID, "leave_game", true, "Disconnecting...")
 
 	logger.Get().Info().
-		Str("gameID", string(ctx.GameID)).
-		Str("playerID", string(ctx.PlayerID)).
+		Str("gameID", string(cmdCtx.GameID)).
+		Str("playerID", string(cmdCtx.PlayerID)).
 		Msg("Player requested to leave")
 
 	return nil
 }
 
 // handleKickPlayer processes a kick player command
-func (h *CommandHandler) handleKickPlayer(ctx *CommandContext, payload json.RawMessage) error {
+func (h *CommandHandler) handleKickPlayer(cmdCtx *CommandContext, payload json.RawMessage) error {
 	kickPayload, err := commands.ParseKickPlayerPayload(payload)
 	if err != nil {
 		logger.Get().Warn().Err(err).Msg("Failed to parse kick payload")
@@ -236,18 +238,18 @@ func (h *CommandHandler) handleKickPlayer(ctx *CommandContext, payload json.RawM
 	}
 
 	// Get game to verify host
-	game, err := h.gameService.GetGame(ctx.GameID)
+	game, err := h.gameService.GetGame(cmdCtx.Ctx, cmdCtx.GameID)
 	if err != nil {
 		return err
 	}
 
 	// Only host can kick
-	if game.HostID != ctx.PlayerID {
+	if game.HostID != cmdCtx.PlayerID {
 		return ErrNotHost
 	}
 
 	// Can't kick yourself
-	if kickPayload.PlayerID == ctx.PlayerID {
+	if kickPayload.PlayerID == cmdCtx.PlayerID {
 		return ErrCannotKickSelf
 	}
 
@@ -257,7 +259,7 @@ func (h *CommandHandler) handleKickPlayer(ctx *CommandContext, payload json.RawM
 	}
 
 	// Get player to kick for username
-	playerToKick, err := h.playerService.GetPlayer(kickPayload.PlayerID)
+	playerToKick, err := h.playerService.GetPlayer(cmdCtx.Ctx, kickPayload.PlayerID)
 	if err != nil {
 		return err
 	}
@@ -270,11 +272,11 @@ func (h *CommandHandler) handleKickPlayer(ctx *CommandContext, payload json.RawM
 	if reason == "" {
 		reason = "kicked"
 	}
-	h.notifier.NotifyPlayerLeft(ctx.GameID, kickPayload.PlayerID, playerToKick.Username, reason)
+	h.notifier.NotifyPlayerLeft(cmdCtx.GameID, kickPayload.PlayerID, playerToKick.Username, reason)
 
 	logger.Get().Info().
-		Str("gameID", string(ctx.GameID)).
-		Str("hostID", string(ctx.PlayerID)).
+		Str("gameID", string(cmdCtx.GameID)).
+		Str("hostID", string(cmdCtx.PlayerID)).
 		Str("kickedID", string(kickPayload.PlayerID)).
 		Msg("Player kicked")
 
@@ -308,8 +310,8 @@ func (h *CommandHandler) canSendToChannel(sender *entities.Player, channel strin
 	return false
 }
 
-func (h *CommandHandler) getChannelRecipients(gameID entities.GameID, channel string, game *entities.Game) ([]entities.PlayerID, error) {
-	players, err := h.playerService.GetGamePlayers(gameID)
+func (h *CommandHandler) getChannelRecipients(cmdCtx *CommandContext, channel string, game *entities.Game) ([]entities.PlayerID, error) {
+	players, err := h.playerService.GetGamePlayers(cmdCtx.Ctx, cmdCtx.GameID)
 	if err != nil {
 		return nil, err
 	}

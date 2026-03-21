@@ -296,7 +296,9 @@ func (s *PromptService) CreateGroupVote(
 	}
 
 	// Add target info
-	allPlayers, _ := s.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	allPlayers, _ := s.playerRepo.GetPlayersByGame(ctx, gameID)
 	for _, p := range allPlayers {
 		if _, exists := playersInfo[p.ID]; !exists {
 			playersInfo[p.ID] = prompts.PlayerInfo{

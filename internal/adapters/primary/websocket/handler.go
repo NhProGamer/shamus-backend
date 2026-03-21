@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"shamus-backend/internal/application/services"
@@ -8,11 +9,15 @@ import (
 	"shamus-backend/internal/domain/entities/prompts"
 	"shamus-backend/internal/domain/ports"
 	"shamus-backend/pkg/logger"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"github.com/olahol/melody"
 )
+
+// Default timeout for WebSocket operations
+const wsOpTimeout = 30 * time.Second
 
 // Handler is the new simplified WebSocket handler using Notification/Prompt/Command architecture
 type Handler struct {
@@ -91,6 +96,10 @@ func (h *Handler) setupEvents() {
 
 // onConnect handles new WebSocket connections
 func (h *Handler) onConnect(s *melody.Session) {
+	// Create context with timeout for this operation
+	ctx, cancel := context.WithTimeout(context.Background(), wsOpTimeout)
+	defer cancel()
+
 	// Extract session data
 	gameIDStr, exist := s.Get("gameId")
 	if !exist || gameIDStr == "" {
@@ -128,7 +137,7 @@ func (h *Handler) onConnect(s *melody.Session) {
 	}
 
 	// Call PlayerService for business logic
-	player, isReconnection, err := h.playerService.HandleConnect(gameID, playerID, username)
+	player, isReconnection, err := h.playerService.HandleConnect(ctx, gameID, playerID, username)
 	if err != nil {
 		s.CloseWithMsg([]byte(err.Error()))
 		return
@@ -148,7 +157,7 @@ func (h *Handler) onConnect(s *melody.Session) {
 	}
 
 	// Send game state to the connecting player
-	h.sendGameStateToPlayer(gameID, playerID)
+	h.sendGameStateToPlayer(ctx, gameID, playerID)
 
 	logger.Get().Info().
 		Str("playerID", string(playerID)).
@@ -160,6 +169,10 @@ func (h *Handler) onConnect(s *melody.Session) {
 
 // onDisconnect handles WebSocket disconnections
 func (h *Handler) onDisconnect(s *melody.Session) {
+	// Create context with timeout for this operation
+	ctx, cancel := context.WithTimeout(context.Background(), wsOpTimeout)
+	defer cancel()
+
 	gameIDVal, gameExists := s.Get("gameId")
 	userIDVal, userExists := s.Get("userId")
 
@@ -171,7 +184,7 @@ func (h *Handler) onDisconnect(s *melody.Session) {
 	playerID := entities.PlayerID(userIDVal.(string))
 
 	// Get player info before removal for notification
-	player, _ := h.playerService.GetPlayer(playerID)
+	player, _ := h.playerService.GetPlayer(ctx, playerID)
 	username := ""
 	if player != nil {
 		username = player.Username
@@ -181,7 +194,7 @@ func (h *Handler) onDisconnect(s *melody.Session) {
 	h.sessions.LeaveRoom(gameID, playerID, s)
 
 	// Call PlayerService for business logic
-	if err := h.playerService.HandleDisconnect(gameID, playerID); err != nil {
+	if err := h.playerService.HandleDisconnect(ctx, gameID, playerID); err != nil {
 		logger.Get().Warn().
 			Str("playerID", string(playerID)).
 			Err(err).
@@ -199,6 +212,10 @@ func (h *Handler) onDisconnect(s *melody.Session) {
 
 // onMessage handles incoming WebSocket messages
 func (h *Handler) onMessage(s *melody.Session, msg []byte) {
+	// Create context with timeout for this message
+	ctx, cancel := context.WithTimeout(context.Background(), wsOpTimeout)
+	defer cancel()
+
 	// Extract session context
 	gameIDStr, _ := s.Get("gameId")
 	userIDStr, _ := s.Get("userId")
@@ -236,10 +253,10 @@ func (h *Handler) onMessage(s *melody.Session, msg []byte) {
 	// Route based on channel
 	switch envelope.Channel {
 	case entities.ChannelResponse:
-		h.handleResponse(s, playerID, msg)
+		h.handleResponse(ctx, s, playerID, msg)
 
 	case entities.ChannelCommand:
-		h.handleCommand(s, gameID, playerID, username, msg)
+		h.handleCommand(ctx, s, gameID, playerID, username, msg)
 
 	default:
 		h.sendError(s, "UNKNOWN_CHANNEL", "Unknown message channel: "+string(envelope.Channel))
@@ -247,14 +264,14 @@ func (h *Handler) onMessage(s *melody.Session, msg []byte) {
 }
 
 // handleResponse processes a prompt response from a client
-func (h *Handler) handleResponse(s *melody.Session, playerID entities.PlayerID, msg []byte) {
+func (h *Handler) handleResponse(ctx context.Context, s *melody.Session, playerID entities.PlayerID, msg []byte) {
 	var response prompts.PromptResponse
 	if err := json.Unmarshal(msg, &response); err != nil {
 		h.sendError(s, "INVALID_RESPONSE", "Invalid response format")
 		return
 	}
 
-	if err := h.promptService.RespondToPrompt(response.PromptID, playerID, response.Response); err != nil {
+	if err := h.promptService.RespondToPrompt(ctx, response.PromptID, playerID, response.Response); err != nil {
 		// Map errors to appropriate codes
 		code := "RESPONSE_ERROR"
 		switch err {
@@ -276,20 +293,21 @@ func (h *Handler) handleResponse(s *melody.Session, playerID entities.PlayerID, 
 }
 
 // handleCommand processes a command from a client
-func (h *Handler) handleCommand(s *melody.Session, gameID entities.GameID, playerID entities.PlayerID, username string, msg []byte) {
+func (h *Handler) handleCommand(ctx context.Context, s *melody.Session, gameID entities.GameID, playerID entities.PlayerID, username string, msg []byte) {
 	cmd, err := entities.ParseCommand(msg)
 	if err != nil {
 		h.sendError(s, "INVALID_COMMAND", "Invalid command format")
 		return
 	}
 
-	ctx := &CommandContext{
+	cmdCtx := &CommandContext{
+		Ctx:      ctx,
 		GameID:   gameID,
 		PlayerID: playerID,
 		Username: username,
 	}
 
-	if err := h.commandHandler.Handle(ctx, cmd); err != nil {
+	if err := h.commandHandler.Handle(cmdCtx, cmd); err != nil {
 		// Map errors to codes
 		code := "COMMAND_ERROR"
 		switch err {
@@ -317,13 +335,13 @@ func (h *Handler) handleCommand(s *melody.Session, gameID entities.GameID, playe
 }
 
 // sendGameStateToPlayer sends the current game state to a player
-func (h *Handler) sendGameStateToPlayer(gameID entities.GameID, playerID entities.PlayerID) {
-	game, err := h.gameService.GetGame(gameID)
+func (h *Handler) sendGameStateToPlayer(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID) {
+	game, err := h.gameService.GetGame(ctx, gameID)
 	if err != nil {
 		return
 	}
 
-	players, err := h.playerService.GetGamePlayers(gameID)
+	players, err := h.playerService.GetGamePlayers(ctx, gameID)
 	if err != nil {
 		return
 	}
