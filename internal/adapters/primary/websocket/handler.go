@@ -11,7 +11,6 @@ import (
 	"shamus-backend/pkg/logger"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"github.com/olahol/melody"
 )
@@ -100,41 +99,16 @@ func (h *Handler) onConnect(s *melody.Session) {
 	ctx, cancel := context.WithTimeout(context.Background(), wsOpTimeout)
 	defer cancel()
 
-	// Extract session data
-	gameIDStr, exist := s.Get("gameId")
-	if !exist || gameIDStr == "" {
-		s.CloseWithMsg([]byte("missing gameId"))
+	// Extract session data with safe type assertions
+	sessionData, err := ExtractSessionData(s)
+	if err != nil {
+		s.CloseWithMsg([]byte(err.Error()))
 		return
 	}
 
-	userIDStr, exist := s.Get("userId")
-	if !exist || userIDStr == "" {
-		s.CloseWithMsg([]byte("missing userId"))
-		return
-	}
-
-	userInfoRaw, exist := s.Get("userInfo")
-	if !exist || userInfoRaw == nil {
-		s.CloseWithMsg([]byte("missing userInfo"))
-		return
-	}
-
-	gameID := entities.GameID(gameIDStr.(string))
-	playerID := entities.PlayerID(userIDStr.(string))
-
-	// Extract username from OIDC token
-	userInfo := userInfoRaw.(oidc.UserInfo)
-	var claims struct {
-		Username string `json:"preferred_username"`
-	}
-	if err := userInfo.Claims(&claims); err != nil {
-		s.CloseWithMsg([]byte("invalid user info"))
-		return
-	}
-	username := claims.Username
-	if username == "" {
-		username = string(playerID)
-	}
+	gameID := sessionData.GameID
+	playerID := sessionData.PlayerID
+	username := sessionData.Username
 
 	// Call PlayerService for business logic
 	player, isReconnection, err := h.playerService.HandleConnect(ctx, gameID, playerID, username)
@@ -173,15 +147,15 @@ func (h *Handler) onDisconnect(s *melody.Session) {
 	ctx, cancel := context.WithTimeout(context.Background(), wsOpTimeout)
 	defer cancel()
 
-	gameIDVal, gameExists := s.Get("gameId")
-	userIDVal, userExists := s.Get("userId")
-
-	if !gameExists || !userExists {
+	// Extract IDs with safe type assertions
+	gameID, err := ExtractGameID(s)
+	if err != nil {
 		return
 	}
-
-	gameID := entities.GameID(gameIDVal.(string))
-	playerID := entities.PlayerID(userIDVal.(string))
+	playerID, err := ExtractPlayerID(s)
+	if err != nil {
+		return
+	}
 
 	// Get player info before removal for notification
 	player, _ := h.playerService.GetPlayer(ctx, playerID)
@@ -216,30 +190,21 @@ func (h *Handler) onMessage(s *melody.Session, msg []byte) {
 	ctx, cancel := context.WithTimeout(context.Background(), wsOpTimeout)
 	defer cancel()
 
-	// Extract session context
-	gameIDStr, _ := s.Get("gameId")
-	userIDStr, _ := s.Get("userId")
-	userInfoRaw, _ := s.Get("userInfo")
-
-	if gameIDStr == nil || userIDStr == nil {
-		h.sendError(s, "MISSING_CONTEXT", "Session context missing")
+	// Extract session data with safe type assertions
+	gameID, err := ExtractGameID(s)
+	if err != nil {
+		h.sendError(s, "MISSING_CONTEXT", err.Error())
+		return
+	}
+	playerID, err := ExtractPlayerID(s)
+	if err != nil {
+		h.sendError(s, "MISSING_CONTEXT", err.Error())
 		return
 	}
 
-	gameID := entities.GameID(gameIDStr.(string))
-	playerID := entities.PlayerID(userIDStr.(string))
-
-	// Extract username
-	username := string(playerID)
-	if userInfoRaw != nil {
-		userInfo := userInfoRaw.(oidc.UserInfo)
-		var claims struct {
-			Username string `json:"preferred_username"`
-		}
-		if err := userInfo.Claims(&claims); err == nil && claims.Username != "" {
-			username = claims.Username
-		}
-	}
+	// Extract username (optional - fallback to playerID if missing)
+	userInfo, _ := ExtractUserInfo(s)
+	username := ExtractUsername(userInfo, playerID)
 
 	// Parse channel from message
 	var envelope struct {
