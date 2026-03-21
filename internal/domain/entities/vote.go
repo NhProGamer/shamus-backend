@@ -117,7 +117,8 @@ func (v *Vote) Resolve() *VoteResult {
 
 	// Only set target if there's no tie
 	if len(tiedPlayers) == 1 {
-		result.Target = &tiedPlayers[0]
+		winner := tiedPlayers[0] // Copy value to avoid pointer to slice element
+		result.Target = &winner
 	}
 
 	v.Result = result
