@@ -21,7 +21,15 @@ const (
 	WerewolfTimerDurationV2 = 60 * time.Second
 	WitchTimerDurationV2    = 45 * time.Second
 	MayorTiebreakerDuration = 30 * time.Second
+	// Default timeout for internal operations
+	internalOpTimeout = 30 * time.Second
 )
+
+// newInternalContext creates a context with timeout for internal operations
+// triggered by timers or callbacks (not from HTTP requests)
+func newInternalContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), internalOpTimeout)
+}
 
 // WinResult represents the outcome of a win condition check
 type WinResult struct {
@@ -78,8 +86,8 @@ func NewGameEngineV2(
 }
 
 // StartGameFlow starts the game flow after StartGame (begins first night)
-func (e *GameEngineV2) StartGameFlow(gameID entities.GameID) error {
-	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+func (e *GameEngineV2) StartGameFlow(ctx context.Context, gameID entities.GameID) error {
+	players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
@@ -91,13 +99,13 @@ func (e *GameEngineV2) StartGameFlow(gameID entities.GameID) error {
 	e.nightService.StartNight(gameID, players)
 
 	// Start with the first night phase
-	e.startNextNightPhase(gameID, players)
+	e.startNextNightPhase(ctx, gameID, players)
 
 	return nil
 }
 
 // startNextNightPhase starts the appropriate night phase
-func (e *GameEngineV2) startNextNightPhase(gameID entities.GameID, players []*entities.Player) {
+func (e *GameEngineV2) startNextNightPhase(ctx context.Context, gameID entities.GameID, players []*entities.Player) {
 	state, exists := e.nightService.GetNightState(gameID)
 	if !exists {
 		e.TransitionToDay(gameID)
@@ -280,12 +288,15 @@ func (e *GameEngineV2) startWitchPhase(gameID entities.GameID, players []*entiti
 
 // TransitionToDay transitions the game to day phase
 func (e *GameEngineV2) TransitionToDay(gameID entities.GameID) error {
-	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
+	ctx, cancel := newInternalContext()
+	defer cancel()
+
+	game, err := e.gameRepo.GetGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
 
-	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
@@ -313,14 +324,14 @@ func (e *GameEngineV2) TransitionToDay(gameID entities.GameID) error {
 
 	// Batch save dead players
 	if len(playersToSave) > 0 {
-		e.playerRepo.SavePlayers(context.TODO(), playersToSave)
+		e.playerRepo.SavePlayers(ctx, playersToSave)
 	}
 
 	// Clear night state
 	e.nightService.ClearNight(gameID)
 
 	// Refresh players and check win condition
-	players, _ = e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	players, _ = e.playerRepo.GetPlayersByGame(ctx, gameID)
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
 		return e.EndGame(gameID, game, winResult)
@@ -328,7 +339,7 @@ func (e *GameEngineV2) TransitionToDay(gameID entities.GameID) error {
 
 	// Update game state
 	game.Phase = entities.PhaseDay
-	e.gameRepo.SaveGame(context.TODO(), game)
+	e.gameRepo.SaveGame(ctx, game)
 
 	// Notify phase change
 	e.notifier.NotifyPhaseChanged(gameID, entities.PhaseDay, game.Day, "")
@@ -356,7 +367,10 @@ func (e *GameEngineV2) TransitionToDay(gameID entities.GameID) error {
 
 // TransitionToVote transitions the game to vote phase
 func (e *GameEngineV2) TransitionToVote(gameID entities.GameID) error {
-	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
+	ctx, cancel := newInternalContext()
+	defer cancel()
+
+	game, err := e.gameRepo.GetGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
@@ -366,7 +380,7 @@ func (e *GameEngineV2) TransitionToVote(gameID entities.GameID) error {
 		return nil // Already transitioned
 	}
 
-	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
@@ -386,7 +400,7 @@ func (e *GameEngineV2) TransitionToVote(gameID entities.GameID) error {
 
 	// Update game state
 	game.Phase = entities.PhaseVote
-	e.gameRepo.SaveGame(context.TODO(), game)
+	e.gameRepo.SaveGame(ctx, game)
 
 	// Notify phase change
 	e.notifier.NotifyPhaseChanged(gameID, entities.PhaseVote, game.Day, "")
@@ -421,12 +435,15 @@ func (e *GameEngineV2) TransitionToVote(gameID entities.GameID) error {
 
 // TransitionToNight transitions the game to night phase
 func (e *GameEngineV2) TransitionToNight(gameID entities.GameID) error {
-	game, err := e.gameRepo.GetGame(context.TODO(), gameID)
+	ctx, cancel := newInternalContext()
+	defer cancel()
+
+	game, err := e.gameRepo.GetGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
 
-	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
@@ -434,14 +451,14 @@ func (e *GameEngineV2) TransitionToNight(gameID entities.GameID) error {
 	// Update game state
 	game.Phase = entities.PhaseNight
 	game.Day++
-	e.gameRepo.SaveGame(context.TODO(), game)
+	e.gameRepo.SaveGame(ctx, game)
 
 	// Notify phase change
 	e.notifier.NotifyPhaseChanged(gameID, entities.PhaseNight, game.Day, "")
 
 	// Initialize night state and start first phase
 	e.nightService.StartNight(gameID, players)
-	e.startNextNightPhase(gameID, players)
+	e.startNextNightPhase(ctx, gameID, players)
 
 	logger.Get().Info().
 		Str("gameID", string(gameID)).
@@ -510,6 +527,9 @@ func (e *GameEngineV2) CheckWinCondition(players []*entities.Player) *WinResult 
 
 // EndGame ends the game
 func (e *GameEngineV2) EndGame(gameID entities.GameID, game *entities.Game, result *WinResult) error {
+	ctx, cancel := newInternalContext()
+	defer cancel()
+
 	// Cancel day timer if running
 	e.mu.Lock()
 	if timer, exists := e.dayTimers[gameID]; exists {
@@ -527,7 +547,7 @@ func (e *GameEngineV2) EndGame(gameID entities.GameID, game *entities.Game, resu
 
 	// Update game state
 	game.Status = entities.GameStatusEnded
-	e.gameRepo.SaveGame(context.TODO(), game)
+	e.gameRepo.SaveGame(ctx, game)
 
 	// Notify
 	e.notifier.NotifyGameEnded(gameID, result.WinningClan, result.Winners)
@@ -542,7 +562,7 @@ func (e *GameEngineV2) EndGame(gameID entities.GameID, game *entities.Game, resu
 
 // --- Callback handlers ---
 
-func (e *GameEngineV2) handleSeerVisionCallback(prompt *entities.Prompt, response json.RawMessage) error {
+func (e *GameEngineV2) handleSeerVisionCallback(ctx context.Context, prompt *entities.Prompt, response []byte) error {
 	gameID := prompt.GameID
 
 	// If timeout (nil response), skip
@@ -566,7 +586,7 @@ func (e *GameEngineV2) handleSeerVisionCallback(prompt *entities.Prompt, respons
 	}
 
 	// Get target's role
-	target, err := e.playerRepo.GetPlayer(context.TODO(), *resp.PlayerID)
+	target, err := e.playerRepo.GetPlayer(ctx, *resp.PlayerID)
 	if err != nil {
 		return err
 	}
@@ -588,7 +608,7 @@ func (e *GameEngineV2) handleSeerVisionCallback(prompt *entities.Prompt, respons
 	return nil
 }
 
-func (e *GameEngineV2) handleWerewolfVoteCallback(prompt *entities.Prompt, response json.RawMessage) error {
+func (e *GameEngineV2) handleWerewolfVoteCallback(ctx context.Context, prompt *entities.Prompt, response []byte) error {
 	if prompt.GroupID == nil {
 		return nil
 	}
@@ -639,7 +659,7 @@ func (e *GameEngineV2) handleWerewolfVoteCallback(prompt *entities.Prompt, respo
 	return nil
 }
 
-func (e *GameEngineV2) handleWitchPotionCallback(prompt *entities.Prompt, response json.RawMessage) error {
+func (e *GameEngineV2) handleWitchPotionCallback(ctx context.Context, prompt *entities.Prompt, response []byte) error {
 	gameID := prompt.GameID
 
 	// If timeout, witch does nothing
@@ -673,7 +693,7 @@ func (e *GameEngineV2) handleWitchPotionCallback(prompt *entities.Prompt, respon
 
 	case "poison":
 		// Need to ask for target
-		players, _ := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+		players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
 		e.startWitchPoisonTargetSelection(gameID, prompt.PlayerID, players)
 	}
 
@@ -724,7 +744,7 @@ func (e *GameEngineV2) startWitchPoisonTargetSelection(gameID entities.GameID, w
 	}
 }
 
-func (e *GameEngineV2) handleWitchPoisonTargetCallback(prompt *entities.Prompt, response json.RawMessage) error {
+func (e *GameEngineV2) handleWitchPoisonTargetCallback(ctx context.Context, prompt *entities.Prompt, response []byte) error {
 	gameID := prompt.GameID
 
 	if response == nil {
@@ -748,7 +768,7 @@ func (e *GameEngineV2) handleWitchPoisonTargetCallback(prompt *entities.Prompt, 
 	return nil
 }
 
-func (e *GameEngineV2) handleVillageVoteCallback(prompt *entities.Prompt, response json.RawMessage) error {
+func (e *GameEngineV2) handleVillageVoteCallback(ctx context.Context, prompt *entities.Prompt, response []byte) error {
 	if prompt.GroupID == nil {
 		return nil
 	}
@@ -796,10 +816,10 @@ func (e *GameEngineV2) handleVillageVoteCallback(prompt *entities.Prompt, respon
 	e.mu.Unlock()
 
 	// Check win condition and transition
-	players, _ := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
-		game, _ := e.gameRepo.GetGame(context.TODO(), gameID)
+		game, _ := e.gameRepo.GetGame(ctx, gameID)
 		return e.EndGame(gameID, game, winResult)
 	}
 
@@ -808,7 +828,10 @@ func (e *GameEngineV2) handleVillageVoteCallback(prompt *entities.Prompt, respon
 }
 
 func (e *GameEngineV2) createMayorTiebreakerPrompt(gameID entities.GameID, mayorID entities.PlayerID, groupID entities.GroupID, tiedPlayers []entities.PlayerID) {
-	players, _ := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	ctx, cancel := newInternalContext()
+	defer cancel()
+
+	players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
 	playersInfo := make(map[entities.PlayerID]prompts.PlayerInfo)
 	for _, p := range players {
 		playersInfo[p.ID] = prompts.PlayerInfo{
@@ -841,7 +864,7 @@ func (e *GameEngineV2) createMayorTiebreakerPrompt(gameID entities.GameID, mayor
 	}
 }
 
-func (e *GameEngineV2) handleMayorTiebreakerCallback(prompt *entities.Prompt, response json.RawMessage) error {
+func (e *GameEngineV2) handleMayorTiebreakerCallback(ctx context.Context, prompt *entities.Prompt, response []byte) error {
 	gameID := prompt.GameID
 
 	if response == nil {
@@ -868,10 +891,10 @@ func (e *GameEngineV2) handleMayorTiebreakerCallback(prompt *entities.Prompt, re
 	e.notifier.NotifyVoteResult(gameID, "village", resp.PlayerID, false, nil, nil, true)
 
 	// Check win condition
-	players, _ := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	players, _ := e.playerRepo.GetPlayersByGame(ctx, gameID)
 	winResult := e.CheckWinCondition(players)
 	if winResult.GameEnded {
-		game, _ := e.gameRepo.GetGame(context.TODO(), gameID)
+		game, _ := e.gameRepo.GetGame(ctx, gameID)
 		return e.EndGame(gameID, game, winResult)
 	}
 
@@ -880,13 +903,16 @@ func (e *GameEngineV2) handleMayorTiebreakerCallback(prompt *entities.Prompt, re
 }
 
 func (e *GameEngineV2) eliminatePlayer(gameID entities.GameID, playerID entities.PlayerID, cause string) {
-	player, err := e.playerRepo.GetPlayer(context.TODO(), playerID)
+	ctx, cancel := newInternalContext()
+	defer cancel()
+
+	player, err := e.playerRepo.GetPlayer(ctx, playerID)
 	if err != nil {
 		return
 	}
 
 	player.Kill()
-	e.playerRepo.SavePlayer(context.TODO(), player)
+	e.playerRepo.SavePlayer(ctx, player)
 
 	var role entities.RoleType
 	if player.Role != nil {
@@ -910,33 +936,36 @@ func (e *GameEngineV2) advanceFromCurrentNightPhase(gameID entities.GameID) {
 		return
 	}
 
-	players, err := e.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	ctx, cancel := newInternalContext()
+	defer cancel()
+
+	players, err := e.playerRepo.GetPlayersByGame(ctx, gameID)
 	if err != nil {
 		logger.Get().Error().Err(err).Msg("Failed to get players")
 		return
 	}
 
-	e.startNextNightPhase(gameID, players)
+	e.startNextNightPhase(ctx, gameID, players)
 }
 
 // --- Legacy interface implementation for compatibility ---
 
 // HandleSeerAction implements the old interface (for transition period)
-func (e *GameEngineV2) HandleSeerAction(gameID entities.GameID, seerID, targetID entities.PlayerID) error {
+func (e *GameEngineV2) HandleSeerAction(ctx context.Context, gameID entities.GameID, seerID, targetID entities.PlayerID) error {
 	return apperrors.ErrNotImplemented
 }
 
 // HandleWerewolfVote implements the old interface
-func (e *GameEngineV2) HandleWerewolfVote(gameID entities.GameID, werewolfID entities.PlayerID, targetID *entities.PlayerID) error {
+func (e *GameEngineV2) HandleWerewolfVote(ctx context.Context, gameID entities.GameID, werewolfID entities.PlayerID, targetID *entities.PlayerID) error {
 	return apperrors.ErrNotImplemented
 }
 
 // HandleWitchAction implements the old interface
-func (e *GameEngineV2) HandleWitchAction(gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error {
+func (e *GameEngineV2) HandleWitchAction(ctx context.Context, gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error {
 	return apperrors.ErrNotImplemented
 }
 
 // HandleVillageVote implements the old interface
-func (e *GameEngineV2) HandleVillageVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error {
+func (e *GameEngineV2) HandleVillageVote(ctx context.Context, gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error {
 	return apperrors.ErrNotImplemented
 }
