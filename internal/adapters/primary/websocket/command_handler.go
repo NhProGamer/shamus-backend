@@ -7,6 +7,7 @@ import (
 	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/commands"
+	"shamus-backend/internal/domain/helpers"
 	"shamus-backend/internal/domain/ports"
 	"shamus-backend/pkg/logger"
 	"time"
@@ -94,6 +95,12 @@ func (h *CommandHandler) handleSendChat(cmdCtx *CommandContext, payload json.Raw
 		return ErrChatMessageTooLong
 	}
 
+	// Sanitize message: remove control characters to prevent XSS
+	sanitizedMessage := helpers.SanitizeChatMessage(chatPayload.Message)
+	if len(sanitizedMessage) < constants.MinChatMessageLength {
+		return ErrChatMessageEmpty
+	}
+
 	// Get game for phase info
 	game, err := h.gameService.GetGame(cmdCtx.Ctx, cmdCtx.GameID)
 	if err != nil {
@@ -133,7 +140,7 @@ func (h *CommandHandler) handleSendChat(cmdCtx *CommandContext, payload json.Raw
 
 	// Send chat notification to recipients
 	timestamp := time.Now().UnixMilli()
-	h.notifier.NotifyChatMessage(recipients, cmdCtx.PlayerID, cmdCtx.Username, chatPayload.Message, chatChannel, timestamp)
+	h.notifier.NotifyChatMessage(recipients, cmdCtx.PlayerID, cmdCtx.Username, sanitizedMessage, chatChannel, timestamp)
 
 	logger.Get().Info().
 		Str("gameID", string(cmdCtx.GameID)).
