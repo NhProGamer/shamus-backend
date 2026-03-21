@@ -9,5 +9,8 @@ type Ability interface {
 	GetDescription() string
 	CanUse(game *Game, player *Player) bool
 	GetConsumptions() *uint8
-	Consume()
+	// TryConsume attempts to consume one use of the ability.
+	// Returns true if successful, false if no consumptions remaining.
+	// For unlimited abilities, always returns true.
+	TryConsume() bool
 }

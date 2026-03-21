@@ -344,10 +344,10 @@ func (s *NightService) consumeWitchAbilities(ctx context.Context, witchID entiti
 
 	for _, ability := range *abilities {
 		if consumeHeal && ability.GetName() == "Heal" {
-			ability.Consume()
+			_ = ability.TryConsume() // Already validated via CanUse
 		}
 		if consumePoison && ability.GetName() == "Poison" {
-			ability.Consume()
+			_ = ability.TryConsume() // Already validated via CanUse
 		}
 	}
 

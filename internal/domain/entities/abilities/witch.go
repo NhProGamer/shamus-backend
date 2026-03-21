@@ -16,10 +16,15 @@ func (h *HealAbility) CanUse(game *entities.Game, player *entities.Player) bool 
 func (h *HealAbility) GetConsumptions() *uint8 {
 	return h.consumptions
 }
-func (h *HealAbility) Consume() {
-	if h.consumptions != nil {
-		*h.consumptions -= 1
+func (h *HealAbility) TryConsume() bool {
+	if h.consumptions == nil {
+		return true // Unlimited
 	}
+	if *h.consumptions == 0 {
+		return false
+	}
+	*h.consumptions--
+	return true
 }
 
 type PoisonAbility struct {
@@ -34,10 +39,15 @@ func (p *PoisonAbility) CanUse(game *entities.Game, player *entities.Player) boo
 func (p *PoisonAbility) GetConsumptions() *uint8 {
 	return p.consumptions
 }
-func (p *PoisonAbility) Consume() {
-	if p.consumptions != nil {
-		*p.consumptions -= 1
+func (p *PoisonAbility) TryConsume() bool {
+	if p.consumptions == nil {
+		return true // Unlimited
 	}
+	if *p.consumptions == 0 {
+		return false
+	}
+	*p.consumptions--
+	return true
 }
 
 func NewHealAbility() *HealAbility {

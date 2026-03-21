@@ -20,8 +20,8 @@ func (s *SeeAbility) GetConsumptions() *uint8 {
 	return nil
 }
 
-func (s *SeeAbility) Consume() {
-	// No consumptions for this ability
+func (s *SeeAbility) TryConsume() bool {
+	return true // Unlimited ability
 }
 
 func NewSeeAbility() *SeeAbility {

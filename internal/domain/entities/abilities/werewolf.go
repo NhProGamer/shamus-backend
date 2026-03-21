@@ -22,8 +22,8 @@ func (k *WerewolfKillAbility) GetConsumptions() *uint8 {
 	return nil
 }
 
-func (k *WerewolfKillAbility) Consume() {
-	// No consumptions for this ability
+func (k *WerewolfKillAbility) TryConsume() bool {
+	return true // Unlimited ability
 }
 
 func NewWerewolfKillAbility() entities.Ability {
