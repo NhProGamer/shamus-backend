@@ -49,9 +49,9 @@ type GameEngineV2 struct {
 	// Mutex to protect concurrent access to engine state
 	mu sync.RWMutex
 
-	// Active group votes (protected by mu)
-	activeWerewolfVote *entities.GroupID
-	activeVillageVote  *entities.GroupID
+	// Active group votes per game (protected by mu)
+	activeWerewolfVotes map[entities.GameID]*entities.GroupID
+	activeVillageVotes  map[entities.GameID]*entities.GroupID
 
 	// Day phase timers - cancellable (protected by mu)
 	dayTimers map[entities.GameID]*time.Timer
@@ -66,12 +66,14 @@ func NewGameEngineV2(
 	nightService *services.NightService,
 ) *GameEngineV2 {
 	engine := &GameEngineV2{
-		gameRepo:      gameRepo,
-		playerRepo:    playerRepo,
-		promptService: promptService,
-		notifier:      notifier,
-		nightService:  nightService,
-		dayTimers:     make(map[entities.GameID]*time.Timer),
+		gameRepo:            gameRepo,
+		playerRepo:          playerRepo,
+		promptService:       promptService,
+		notifier:            notifier,
+		nightService:        nightService,
+		activeWerewolfVotes: make(map[entities.GameID]*entities.GroupID),
+		activeVillageVotes:  make(map[entities.GameID]*entities.GroupID),
+		dayTimers:           make(map[entities.GameID]*time.Timer),
 	}
 
 	// Register prompt callbacks
@@ -231,7 +233,7 @@ func (e *GameEngineV2) startWerewolfVotePhase(gameID entities.GameID, players []
 	}
 
 	e.mu.Lock()
-	e.activeWerewolfVote = groupID
+	e.activeWerewolfVotes[gameID] = groupID
 	e.mu.Unlock()
 }
 
@@ -422,7 +424,7 @@ func (e *GameEngineV2) TransitionToVote(gameID entities.GameID) error {
 	}
 
 	e.mu.Lock()
-	e.activeVillageVote = groupID
+	e.activeVillageVotes[gameID] = groupID
 	e.mu.Unlock()
 
 	logger.Get().Info().
@@ -536,9 +538,9 @@ func (e *GameEngineV2) EndGame(gameID entities.GameID, game *entities.Game, resu
 		timer.Stop()
 		delete(e.dayTimers, gameID)
 	}
-	// Clear active votes
-	e.activeWerewolfVote = nil
-	e.activeVillageVote = nil
+	// Clear active votes for this game
+	delete(e.activeWerewolfVotes, gameID)
+	delete(e.activeVillageVotes, gameID)
 	e.mu.Unlock()
 
 	// Clean up other resources
@@ -650,7 +652,7 @@ func (e *GameEngineV2) handleWerewolfVoteCallback(ctx context.Context, prompt *e
 	}
 
 	e.mu.Lock()
-	e.activeWerewolfVote = nil
+	delete(e.activeWerewolfVotes, gameID)
 	e.mu.Unlock()
 
 	// Advance to next phase
@@ -802,7 +804,7 @@ func (e *GameEngineV2) handleVillageVoteCallback(ctx context.Context, prompt *en
 		// No mayor - no one dies
 		e.notifier.NotifyVoteResult(gameID, "village", nil, true, result.TiedTargets, result.VoteCounts, false)
 		e.mu.Lock()
-		e.activeVillageVote = nil
+		delete(e.activeVillageVotes, gameID)
 		e.mu.Unlock()
 		e.TransitionToNight(gameID)
 		return nil
@@ -816,7 +818,7 @@ func (e *GameEngineV2) handleVillageVoteCallback(ctx context.Context, prompt *en
 	e.notifier.NotifyVoteResult(gameID, "village", result.Target, false, nil, result.VoteCounts, false)
 
 	e.mu.Lock()
-	e.activeVillageVote = nil
+	delete(e.activeVillageVotes, gameID)
 	e.mu.Unlock()
 
 	// Check win condition and transition
