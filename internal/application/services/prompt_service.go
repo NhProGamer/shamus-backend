@@ -47,10 +47,10 @@ type GroupVoteState struct {
 	Resolved  bool
 
 	// For mayor tiebreaker in village vote
-	HasMayor    bool
-	MayorID     *entities.PlayerID
+	HasMayor      bool
+	MayorID       *entities.PlayerID
 	AwaitingMayor bool
-	TiedTargets []entities.PlayerID
+	TiedTargets   []entities.PlayerID
 }
 
 // PromptService manages prompts with timeouts and group voting
@@ -62,9 +62,9 @@ type PromptService struct {
 	timers        map[entities.PromptID]*time.Timer         // Individual prompt timers
 	groupTimers   map[entities.GroupID]*time.Timer          // Group vote timers
 
-	sender      ports.PlayerSender
-	notifier    *NotificationService
-	playerRepo  ports.PlayerRepository
+	sender     ports.PlayerSender
+	notifier   *NotificationService
+	playerRepo ports.PlayerRepository
 
 	lock sync.RWMutex
 }
@@ -308,16 +308,16 @@ func (s *PromptService) CreateGroupVote(
 
 	// Create group state
 	groupState := &GroupVoteState{
-		GroupID:     groupID,
-		GameID:      gameID,
-		Context:     voteContext,
-		Voters:      voterIDs,
-		Votes:       make(map[entities.PlayerID]*entities.PlayerID),
-		PromptIDs:   make(map[entities.PlayerID]entities.PromptID),
-		ExpiresAt:   expiresAt,
-		Resolved:    false,
-		HasMayor:    mayorID != nil,
-		MayorID:     mayorID,
+		GroupID:       groupID,
+		GameID:        gameID,
+		Context:       voteContext,
+		Voters:        voterIDs,
+		Votes:         make(map[entities.PlayerID]*entities.PlayerID),
+		PromptIDs:     make(map[entities.PlayerID]entities.PromptID),
+		ExpiresAt:     expiresAt,
+		Resolved:      false,
+		HasMayor:      mayorID != nil,
+		MayorID:       mayorID,
 		AwaitingMayor: false,
 	}
 
@@ -722,11 +722,15 @@ func (s *PromptService) CleanupGame(gameID entities.GameID) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	// Track players who had prompts in this game
+	playersToClean := make(map[entities.PlayerID]struct{})
+
 	// Cancel and remove prompts
 	for promptID, prompt := range s.prompts {
 		if prompt.GameID == gameID {
 			s.cancelPromptTimer(promptID)
 			delete(s.prompts, promptID)
+			playersToClean[prompt.PlayerID] = struct{}{}
 		}
 	}
 
@@ -736,6 +740,11 @@ func (s *PromptService) CleanupGame(gameID entities.GameID) {
 			s.cancelGroupTimer(groupID)
 			delete(s.groupStates, groupID)
 		}
+	}
+
+	// Clean up playerPrompts for affected players
+	for playerID := range playersToClean {
+		delete(s.playerPrompts, playerID)
 	}
 
 	logger.Get().Info().
