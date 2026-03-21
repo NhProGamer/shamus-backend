@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"shamus-backend/internal/adapters/api/ws"
+	"shamus-backend/internal/adapters/primary/websocket"
 	"shamus-backend/internal/adapters/infra"
 	"shamus-backend/internal/application/orchestration"
 	"shamus-backend/internal/application/services"
@@ -81,7 +81,7 @@ func main() {
 
 	// === SESSION MANAGER ===
 	// Manages WebSocket sessions and game rooms
-	sessionManager := ws.NewSessionManager()
+	sessionManager := websocket.NewSessionManager()
 
 	// === NOTIFICATION SERVICE ===
 	// Sends typed notifications to players (server -> client, one-way)
@@ -94,11 +94,11 @@ func main() {
 	// === COMMAND HANDLER ===
 	// Handles client-initiated commands (chat, settings, start, kick)
 	// Note: PlayerService and GameEngine will be set later to break circular dependency
-	commandHandler := ws.NewCommandHandler(gameService, nil, chatService, notificationService)
+	commandHandler := websocket.NewCommandHandler(gameService, nil, chatService, notificationService)
 
 	// === WEBSOCKET HANDLER ===
 	// Main WebSocket handler using Notification/Prompt/Command architecture
-	wsHandler := ws.NewHandler(m, sessionManager, promptService, commandHandler, notificationService, gameService)
+	wsHandler := websocket.NewHandler(m, sessionManager, promptService, commandHandler, notificationService, gameService)
 
 	// === PLAYER SERVICE ===
 	// Now we can create PlayerService with wsHandler as ConnectionChecker
