@@ -290,6 +290,8 @@ func (h *Handler) handleCommand(ctx context.Context, s *melody.Session, gameID e
 			code = "MESSAGE_TOO_LONG"
 		case ErrCannotSendToChannel:
 			code = "CHANNEL_FORBIDDEN"
+		case ErrPlayerNotInGame:
+			code = "NOT_IN_GAME"
 		}
 		h.sendError(s, code, err.Error())
 		return

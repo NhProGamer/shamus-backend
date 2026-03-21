@@ -63,6 +63,15 @@ type CommandContext struct {
 
 // Handle processes a command from a client
 func (h *CommandHandler) Handle(cmdCtx *CommandContext, cmd *entities.Command) error {
+	// Validate player belongs to the game they're sending commands to
+	player, err := h.playerService.GetPlayer(cmdCtx.Ctx, cmdCtx.PlayerID)
+	if err != nil {
+		return err
+	}
+	if player.GameID == nil || *player.GameID != cmdCtx.GameID {
+		return ErrPlayerNotInGame
+	}
+
 	switch cmd.Type {
 	case entities.CmdSendChat:
 		return h.handleSendChat(cmdCtx, cmd.Payload)
@@ -375,4 +384,5 @@ var (
 	ErrNotHost             = errors.New("only the host can perform this action")
 	ErrCannotKickSelf      = errors.New("cannot kick yourself")
 	ErrGameNotWaiting      = errors.New("game is not in waiting state")
+	ErrPlayerNotInGame     = errors.New("player does not belong to this game")
 )
