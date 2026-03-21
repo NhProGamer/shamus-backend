@@ -1,6 +1,7 @@
 package ports
 
 import (
+	"context"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/events"
 	"time"
@@ -9,42 +10,43 @@ import (
 // GameService defines the game business logic operations
 type GameService interface {
 	// CreateNewGame creates a new game with the given host
-	CreateNewGame(hostID entities.PlayerID) (*entities.Game, error)
+	CreateNewGame(ctx context.Context, hostID entities.PlayerID) (*entities.Game, error)
 
 	// JoinGame adds a player to an existing game
-	JoinGame(gameID entities.GameID, playerID entities.PlayerID) (*entities.Game, error)
+	JoinGame(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID) (*entities.Game, error)
 
 	// GetGame retrieves a game by ID
-	GetGame(gameID entities.GameID) (*entities.Game, error)
+	GetGame(ctx context.Context, gameID entities.GameID) (*entities.Game, error)
 
 	// UpdateSettings updates game settings (roles configuration)
 	// Only the host can update settings, and only when game is in waiting state
-	UpdateSettings(gameID entities.GameID, playerID entities.PlayerID, settings entities.GameSettings) (*entities.Game, error)
+	UpdateSettings(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID, settings entities.GameSettings) (*entities.Game, error)
 
 	// StartGame starts a game - assigns roles and transitions to night phase
 	// Only the host can start the game, and only when game is in waiting state
-	StartGame(gameID entities.GameID, playerID entities.PlayerID) (*entities.Game, []*entities.Player, error)
+	StartGame(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID) (*entities.Game, []*entities.Player, error)
 }
 
 // PlayerService defines player management operations
 type PlayerService interface {
 	// HandleConnect is called when a player connects via WebSocket
 	// Returns the Player and a boolean indicating if this is a reconnection
-	HandleConnect(gameID entities.GameID, playerID entities.PlayerID, username string) (*entities.Player, bool, error)
+	HandleConnect(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID, username string) (*entities.Player, bool, error)
 
 	// HandleDisconnect is called when a player disconnects from WebSocket
-	HandleDisconnect(gameID entities.GameID, playerID entities.PlayerID) error
+	HandleDisconnect(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID) error
 
 	// GetPlayer retrieves a player by ID
-	GetPlayer(id entities.PlayerID) (*entities.Player, error)
+	GetPlayer(ctx context.Context, id entities.PlayerID) (*entities.Player, error)
 
 	// GetGamePlayers retrieves all players in a game
-	GetGamePlayers(gameID entities.GameID) ([]*entities.Player, error)
+	GetGamePlayers(ctx context.Context, gameID entities.GameID) ([]*entities.Player, error)
 
 	// CleanupGamePlayers removes all players when a game ends
-	CleanupGamePlayers(gameID entities.GameID) error
+	CleanupGamePlayers(ctx context.Context, gameID entities.GameID) error
 
 	// IsPlayerConnected checks if a player has an active WebSocket session
+	// Note: This is an in-memory check and does not need context
 	IsPlayerConnected(playerID entities.PlayerID) bool
 }
 
@@ -112,29 +114,29 @@ type TimerService interface {
 // VoteService manages voting sessions for games
 type VoteService interface {
 	// StartVillageVote starts a village vote to eliminate a player
-	StartVillageVote(gameID entities.GameID, alivePlayers []*entities.Player) (*entities.Vote, error)
+	StartVillageVote(ctx context.Context, gameID entities.GameID, alivePlayers []*entities.Player) (*entities.Vote, error)
 
 	// StartWerewolfVote starts a werewolf vote to choose a victim
-	StartWerewolfVote(gameID entities.GameID, werewolves []*entities.Player, potentialVictims []*entities.Player) (*entities.Vote, error)
+	StartWerewolfVote(ctx context.Context, gameID entities.GameID, werewolves []*entities.Player, potentialVictims []*entities.Player) (*entities.Vote, error)
 
 	// CastVote records a player's vote
-	CastVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
+	CastVote(ctx context.Context, gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
 
 	// HasEveryoneVoted checks if all eligible voters have voted
-	HasEveryoneVoted(gameID entities.GameID) bool
+	HasEveryoneVoted(ctx context.Context, gameID entities.GameID) (bool, error)
 
 	// ResolveVote resolves the current vote and returns the result
-	ResolveVote(gameID entities.GameID) (*entities.VoteResult, error)
+	ResolveVote(ctx context.Context, gameID entities.GameID) (*entities.VoteResult, error)
 
 	// GetVote returns the current vote for a game
-	GetVote(gameID entities.GameID) (*entities.Vote, bool)
+	GetVote(ctx context.Context, gameID entities.GameID) (*entities.Vote, bool, error)
 
 	// ClearVote removes the vote for a game
-	ClearVote(gameID entities.GameID)
+	ClearVote(ctx context.Context, gameID entities.GameID) error
 }
 
 // NightService manages the night phase actions
-// Note: This interface uses strings for phase names for flexibility.
+// Note: This service uses in-memory state only, no context needed.
 // The implementation uses the NightPhase type internally.
 type NightService interface {
 	// StartNight initializes a new night phase
@@ -166,23 +168,25 @@ type NightService interface {
 // GameEngine orchestrates game flow and phase transitions
 type GameEngine interface {
 	// StartGameFlow starts the game flow after StartGame (begins first night)
-	StartGameFlow(gameID entities.GameID) error
+	StartGameFlow(ctx context.Context, gameID entities.GameID) error
 
 	// HandleSeerAction processes the seer's night action
-	HandleSeerAction(gameID entities.GameID, seerID, targetID entities.PlayerID) error
+	HandleSeerAction(ctx context.Context, gameID entities.GameID, seerID, targetID entities.PlayerID) error
 
 	// HandleWerewolfVote processes a werewolf's vote during night
-	HandleWerewolfVote(gameID entities.GameID, werewolfID entities.PlayerID, targetID *entities.PlayerID) error
+	HandleWerewolfVote(ctx context.Context, gameID entities.GameID, werewolfID entities.PlayerID, targetID *entities.PlayerID) error
 
 	// HandleWitchAction processes the witch's night action
-	HandleWitchAction(gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error
+	HandleWitchAction(ctx context.Context, gameID entities.GameID, witchID entities.PlayerID, healTargetID, poisonTargetID *entities.PlayerID) error
 
 	// HandleVillageVote processes a village vote during day
-	HandleVillageVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
+	HandleVillageVote(ctx context.Context, gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
 }
 
 // NotificationService handles sending notifications to players
 // Notifications are one-way messages from server to client
+// Note: Most methods don't need context as they only send to connected players.
+// NotifyRole needs context as it queries the player repository.
 type NotificationService interface {
 	// NotifyPlayer sends a notification to a specific player
 	NotifyPlayer(playerID entities.PlayerID, notifType entities.NotificationType, payload interface{}) error
@@ -194,7 +198,7 @@ type NotificationService interface {
 	NotifyAll(gameID entities.GameID, notifType entities.NotificationType, payload interface{}) error
 
 	// NotifyRole sends a notification to all alive players with a specific role
-	NotifyRole(gameID entities.GameID, roleType entities.RoleType, notifType entities.NotificationType, payload interface{}) error
+	NotifyRole(ctx context.Context, gameID entities.GameID, roleType entities.RoleType, notifType entities.NotificationType, payload interface{}) error
 
 	// --- Typed helper methods ---
 
@@ -247,11 +251,14 @@ type NotificationService interface {
 	NotifyAck(playerID entities.PlayerID, action string, success bool, message string) error
 }
 
+// PromptCallback is the function type for prompt response callbacks
+type PromptCallback func(ctx context.Context, prompt *entities.Prompt, response []byte) error
+
 // PromptService manages interactive prompts with timeouts
 // Prompts are two-way: server sends prompt, client responds
 type PromptService interface {
 	// RegisterCallback registers a callback for a specific context
-	RegisterCallback(context string, callback func(prompt *entities.Prompt, response []byte) error)
+	RegisterCallback(context string, callback PromptCallback)
 
 	// CreatePrompt creates and sends a prompt to a single player
 	CreatePrompt(
@@ -265,7 +272,7 @@ type PromptService interface {
 	) (*entities.Prompt, error)
 
 	// RespondToPrompt handles a player's response to a prompt
-	RespondToPrompt(promptID entities.PromptID, playerID entities.PlayerID, response []byte) error
+	RespondToPrompt(ctx context.Context, promptID entities.PromptID, playerID entities.PlayerID, response []byte) error
 
 	// CancelPrompt cancels a pending prompt
 	CancelPrompt(promptID entities.PromptID) error
