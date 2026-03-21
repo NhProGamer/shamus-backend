@@ -180,5 +180,118 @@ type GameEngine interface {
 	HandleVillageVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error
 }
 
-// NOTE: ActionService has been replaced by PromptService in the new architecture.
-// See internal/adapters/app/prompt_service.go for the new implementation.
+// NotificationService handles sending notifications to players
+// Notifications are one-way messages from server to client
+type NotificationService interface {
+	// NotifyPlayer sends a notification to a specific player
+	NotifyPlayer(playerID entities.PlayerID, notifType entities.NotificationType, payload interface{}) error
+
+	// NotifyPlayers sends a notification to multiple specific players
+	NotifyPlayers(playerIDs []entities.PlayerID, notifType entities.NotificationType, payload interface{})
+
+	// NotifyAll sends a notification to all players in a game
+	NotifyAll(gameID entities.GameID, notifType entities.NotificationType, payload interface{}) error
+
+	// NotifyRole sends a notification to all alive players with a specific role
+	NotifyRole(gameID entities.GameID, roleType entities.RoleType, notifType entities.NotificationType, payload interface{}) error
+
+	// --- Typed helper methods ---
+
+	// NotifyPhaseChanged notifies all players of a phase change
+	NotifyPhaseChanged(gameID entities.GameID, phase entities.GamePhase, day int, subPhase string) error
+
+	// NotifyPlayerJoined notifies all players that a new player joined
+	NotifyPlayerJoined(gameID entities.GameID, playerID entities.PlayerID, username string) error
+
+	// NotifyPlayerLeft notifies all players that a player left
+	NotifyPlayerLeft(gameID entities.GameID, playerID entities.PlayerID, username string, reason string) error
+
+	// NotifyPlayerDied notifies all players of a death
+	NotifyPlayerDied(gameID entities.GameID, playerID entities.PlayerID, username string, role entities.RoleType, cause string) error
+
+	// NotifyPlayerInactive notifies all players that a player became inactive
+	NotifyPlayerInactive(gameID entities.GameID, playerID entities.PlayerID, username string) error
+
+	// NotifyGameStarted notifies all players that the game started
+	NotifyGameStarted(gameID entities.GameID, day int) error
+
+	// NotifyGameEnded notifies all players that the game ended
+	NotifyGameEnded(gameID entities.GameID, winningClan entities.Clan, winners []entities.PlayerID) error
+
+	// NotifyRoleReveal sends a player their assigned role (private)
+	NotifyRoleReveal(playerID entities.PlayerID, role entities.RoleType, roleName, description string) error
+
+	// NotifyTimerStarted notifies all players that a timer has started
+	NotifyTimerStarted(gameID entities.GameID, phase entities.GamePhase, subPhase string, durationSec int) error
+
+	// NotifySeerResult sends the seer their vision result (private)
+	NotifySeerResult(seerID entities.PlayerID, targetID entities.PlayerID, targetUsername string, role entities.RoleType) error
+
+	// NotifyVoteStarted notifies relevant players that a vote has started
+	NotifyVoteStarted(gameID entities.GameID, voteType string, voters, targets []entities.PlayerID, durationSec int) error
+
+	// NotifyVoteUpdate sends real-time vote update to group members
+	NotifyVoteUpdate(playerIDs []entities.PlayerID, votes map[entities.PlayerID]*entities.PlayerID, voteCounts map[entities.PlayerID]int, votersRemaining []entities.PlayerID)
+
+	// NotifyVoteResult notifies all players of the vote result
+	NotifyVoteResult(gameID entities.GameID, voteType string, result *entities.PlayerID, isTie bool, tiedPlayers []entities.PlayerID, finalVotes map[entities.PlayerID]int, mayorDecided bool) error
+
+	// NotifyChatMessage broadcasts a chat message to appropriate recipients
+	NotifyChatMessage(recipients []entities.PlayerID, senderID entities.PlayerID, senderName, message, channel string, timestamp int64)
+
+	// NotifyError sends an error notification to a player
+	NotifyError(playerID entities.PlayerID, code, message, action string) error
+
+	// NotifyAck sends an acknowledgement to a player
+	NotifyAck(playerID entities.PlayerID, action string, success bool, message string) error
+}
+
+// PromptService manages interactive prompts with timeouts
+// Prompts are two-way: server sends prompt, client responds
+type PromptService interface {
+	// RegisterCallback registers a callback for a specific context
+	RegisterCallback(context string, callback func(prompt *entities.Prompt, response []byte) error)
+
+	// CreatePrompt creates and sends a prompt to a single player
+	CreatePrompt(
+		gameID entities.GameID,
+		playerID entities.PlayerID,
+		promptType entities.PromptType,
+		context string,
+		payload interface{},
+		timeout time.Duration,
+		canSkip bool,
+	) (*entities.Prompt, error)
+
+	// RespondToPrompt handles a player's response to a prompt
+	RespondToPrompt(promptID entities.PromptID, playerID entities.PlayerID, response []byte) error
+
+	// CancelPrompt cancels a pending prompt
+	CancelPrompt(promptID entities.PromptID) error
+
+	// CreateGroupVote creates a group vote (werewolf or village vote)
+	CreateGroupVote(
+		gameID entities.GameID,
+		voteContext string,
+		voters []*entities.Player,
+		eligibleTargets []entities.PlayerID,
+		timeout time.Duration,
+		canAbstain bool,
+		mayorID *entities.PlayerID,
+	) (*entities.GroupID, error)
+
+	// ResolveGroupVote manually resolves a group vote
+	ResolveGroupVote(groupID entities.GroupID) (interface{}, error)
+
+	// HasEveryoneVoted checks if all voters in a group have voted
+	HasEveryoneVoted(groupID entities.GroupID) bool
+
+	// CleanupGame removes all prompts and group states for a game
+	CleanupGame(gameID entities.GameID)
+}
+
+// ConnectionChecker checks if a player has an active connection
+type ConnectionChecker interface {
+	// IsPlayerConnected returns true if the player has an active WebSocket session
+	IsPlayerConnected(playerID entities.PlayerID) bool
+}
