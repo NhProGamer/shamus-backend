@@ -29,9 +29,7 @@ func NewVoteService(voteRepo *redis.VoteRepository, broadcaster ports.Broadcaste
 }
 
 // StartVillageVote starts a village vote to eliminate a player
-func (s *VoteService) StartVillageVote(gameID entities.GameID, alivePlayers []*entities.Player) (*entities.Vote, error) {
-	ctx := context.TODO()
-
+func (s *VoteService) StartVillageVote(ctx context.Context, gameID entities.GameID, alivePlayers []*entities.Player) (*entities.Vote, error) {
 	// Check if vote already exists
 	exists, err := s.voteRepo.VoteExists(ctx, gameID)
 	if err != nil {
@@ -69,9 +67,7 @@ func (s *VoteService) StartVillageVote(gameID entities.GameID, alivePlayers []*e
 }
 
 // StartWerewolfVote starts a werewolf vote to choose a victim
-func (s *VoteService) StartWerewolfVote(gameID entities.GameID, werewolves []*entities.Player, potentialVictims []*entities.Player) (*entities.Vote, error) {
-	ctx := context.TODO()
-
+func (s *VoteService) StartWerewolfVote(ctx context.Context, gameID entities.GameID, werewolves []*entities.Player, potentialVictims []*entities.Player) (*entities.Vote, error) {
 	// Check if vote already exists
 	exists, err := s.voteRepo.VoteExists(ctx, gameID)
 	if err != nil {
@@ -116,9 +112,7 @@ func (s *VoteService) StartWerewolfVote(gameID entities.GameID, werewolves []*en
 
 // CastVote records a player's vote atomically
 // Uses Redis HSET for atomic ballot storage - no race conditions possible
-func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error {
-	ctx := context.TODO()
-
+func (s *VoteService) CastVote(ctx context.Context, gameID entities.GameID, voterID entities.PlayerID, targetID *entities.PlayerID) error {
 	// Get vote metadata to validate
 	vote, err := s.voteRepo.GetVote(ctx, gameID)
 	if err != nil {
@@ -180,32 +174,31 @@ func (s *VoteService) CastVote(gameID entities.GameID, voterID entities.PlayerID
 }
 
 // HasEveryoneVoted checks if all eligible voters have voted
-func (s *VoteService) HasEveryoneVoted(gameID entities.GameID) bool {
-	ctx := context.TODO()
-
+func (s *VoteService) HasEveryoneVoted(ctx context.Context, gameID entities.GameID) (bool, error) {
 	vote, err := s.voteRepo.GetVote(ctx, gameID)
-	if err != nil || vote == nil {
-		return false
+	if err != nil {
+		return false, err
+	}
+	if vote == nil {
+		return false, apperrors.ErrVoteNotFound
 	}
 
 	// No eligible voters means voting cannot complete normally
 	if len(vote.EligibleVoters) == 0 {
-		return false
+		return false, nil
 	}
 
 	// Get ballot count from Redis hash
 	ballotCount, err := s.voteRepo.GetBallotCount(ctx, gameID)
 	if err != nil {
-		return false
+		return false, err
 	}
 
-	return int(ballotCount) >= len(vote.EligibleVoters)
+	return int(ballotCount) >= len(vote.EligibleVoters), nil
 }
 
 // ResolveVote resolves the current vote and returns the result
-func (s *VoteService) ResolveVote(gameID entities.GameID) (*entities.VoteResult, error) {
-	ctx := context.TODO()
-
+func (s *VoteService) ResolveVote(ctx context.Context, gameID entities.GameID) (*entities.VoteResult, error) {
 	vote, err := s.voteRepo.GetVote(ctx, gameID)
 	if err != nil {
 		return nil, err
@@ -233,26 +226,24 @@ func (s *VoteService) ResolveVote(gameID entities.GameID) (*entities.VoteResult,
 }
 
 // GetVote returns the current vote for a game
-func (s *VoteService) GetVote(gameID entities.GameID) (*entities.Vote, bool) {
-	ctx := context.TODO()
-
+func (s *VoteService) GetVote(ctx context.Context, gameID entities.GameID) (*entities.Vote, bool, error) {
 	vote, err := s.voteRepo.GetVote(ctx, gameID)
-	if err != nil || vote == nil {
-		return nil, false
+	if err != nil {
+		return nil, false, err
 	}
-	return vote, true
+	if vote == nil {
+		return nil, false, nil
+	}
+	return vote, true, nil
 }
 
 // ClearVote removes the vote for a game
-func (s *VoteService) ClearVote(gameID entities.GameID) {
-	ctx := context.TODO()
-	s.voteRepo.DeleteVote(ctx, gameID)
+func (s *VoteService) ClearVote(ctx context.Context, gameID entities.GameID) error {
+	return s.voteRepo.DeleteVote(ctx, gameID)
 }
 
 // GetVoteCount returns the number of votes for each target
-func (s *VoteService) GetVoteCount(gameID entities.GameID) map[entities.PlayerID]int {
-	ctx := context.TODO()
-
+func (s *VoteService) GetVoteCount(ctx context.Context, gameID entities.GameID) map[entities.PlayerID]int {
 	vote, err := s.voteRepo.GetVote(ctx, gameID)
 	if err != nil || vote == nil {
 		return nil

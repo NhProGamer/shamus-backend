@@ -88,8 +88,8 @@ func (s *NotificationService) NotifyAll(gameID entities.GameID, notifType entiti
 }
 
 // NotifyRole sends a notification to all players with a specific role
-func (s *NotificationService) NotifyRole(gameID entities.GameID, roleType entities.RoleType, notifType entities.NotificationType, payload interface{}) error {
-	players, err := s.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+func (s *NotificationService) NotifyRole(ctx context.Context, gameID entities.GameID, roleType entities.RoleType, notifType entities.NotificationType, payload interface{}) error {
+	players, err := s.playerRepo.GetPlayersByGame(ctx, gameID)
 	if err != nil {
 		return err
 	}

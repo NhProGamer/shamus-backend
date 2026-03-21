@@ -15,7 +15,7 @@ import (
 
 // PromptCallback is called when a prompt is answered or expires
 // If response is nil, the prompt timed out
-type PromptCallback func(prompt *entities.Prompt, response json.RawMessage) error
+type PromptCallback = ports.PromptCallback
 
 // GroupVoteResult represents the result of a group vote
 type GroupVoteResult struct {
@@ -154,7 +154,7 @@ func (s *PromptService) CreatePrompt(
 }
 
 // RespondToPrompt handles a player's response to a prompt
-func (s *PromptService) RespondToPrompt(promptID entities.PromptID, playerID entities.PlayerID, response json.RawMessage) error {
+func (s *PromptService) RespondToPrompt(ctx context.Context, promptID entities.PromptID, playerID entities.PlayerID, response json.RawMessage) error {
 	s.lock.Lock()
 	prompt, exists := s.prompts[promptID]
 	if !exists {
@@ -239,7 +239,7 @@ func (s *PromptService) RespondToPrompt(promptID entities.PromptID, playerID ent
 
 	// Invoke callback outside lock
 	if callback != nil {
-		return callback(prompt, response)
+		return callback(ctx, prompt, response)
 	}
 
 	return nil
@@ -436,7 +436,10 @@ func (s *PromptService) ResolveGroupVote(groupID entities.GroupID) (*GroupVoteRe
 
 		// Serialize result as response
 		responseData, _ := json.Marshal(result)
-		if err := callback(syntheticPrompt, responseData); err != nil {
+		// Use background context with timeout for callback invocation
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := callback(ctx, syntheticPrompt, responseData); err != nil {
 			logger.Get().Error().Err(err).Msg("Group vote callback failed")
 			return result, err
 		}
@@ -524,7 +527,10 @@ func (s *PromptService) SubmitMayorDecision(groupID entities.GroupID, mayorID en
 			GroupID: &groupID,
 		}
 		responseData, _ := json.Marshal(result)
-		callback(syntheticPrompt, responseData)
+		// Use background context with timeout for callback invocation
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		callback(ctx, syntheticPrompt, responseData)
 	}
 
 	return result, nil
@@ -608,7 +614,10 @@ func (s *PromptService) handlePromptTimeout(promptID entities.PromptID) {
 
 	// Invoke callback with nil response (timeout)
 	if callback != nil {
-		callback(prompt, nil)
+		// Use background context with timeout for timer-triggered callback
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		callback(ctx, prompt, nil)
 	}
 }
 

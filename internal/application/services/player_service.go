@@ -56,14 +56,14 @@ func (s *PlayerService) SetNotifier(notifier HostChangedNotifier) {
 
 // HandleConnect is called when a player connects via WebSocket
 // Returns the Player and a boolean indicating if this is a reconnection
-func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.PlayerID, username string) (*entities.Player, bool, error) {
+func (s *PlayerService) HandleConnect(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID, username string) (*entities.Player, bool, error) {
 	// 1. Check if player is already connected (active WebSocket session)
 	if s.connChecker != nil && s.connChecker.IsPlayerConnected(playerID) {
 		return nil, false, apperrors.ErrPlayerAlreadyConnected
 	}
 
 	// 2. Get the game
-	game, err := s.gameRepo.GetGame(context.TODO(), gameID)
+	game, err := s.gameRepo.GetGame(ctx, gameID)
 	if err != nil {
 		return nil, false, apperrors.ErrGameNotFound
 	}
@@ -74,7 +74,7 @@ func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.
 	}
 
 	// 4. Check if player already exists
-	existingPlayer, err := s.playerRepo.GetPlayer(context.TODO(), playerID)
+	existingPlayer, err := s.playerRepo.GetPlayer(ctx, playerID)
 
 	if err != nil {
 		// Player not found - this is a new player
@@ -84,12 +84,12 @@ func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.
 
 		// Create new player
 		player := entities.NewPlayer(playerID, username, &gameID)
-		if err := s.playerRepo.SavePlayer(context.TODO(), player); err != nil {
+		if err := s.playerRepo.SavePlayer(ctx, player); err != nil {
 			return nil, false, err
 		}
 
 		// Add to game's player set
-		if err := s.playerRepo.AddPlayerToGame(context.TODO(), gameID, playerID); err != nil {
+		if err := s.playerRepo.AddPlayerToGame(ctx, gameID, playerID); err != nil {
 			return nil, false, err
 		}
 
@@ -103,7 +103,7 @@ func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.
 		}
 		if !found {
 			game.Players = append(game.Players, playerID)
-			if err := s.gameRepo.SaveGame(context.TODO(), game); err != nil {
+			if err := s.gameRepo.SaveGame(ctx, game); err != nil {
 				return nil, false, err
 			}
 		}
@@ -126,12 +126,12 @@ func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.
 		// Update player's game
 		existingPlayer.GameID = &gameID
 		existingPlayer.Connect()
-		if err := s.playerRepo.SavePlayer(context.TODO(), existingPlayer); err != nil {
+		if err := s.playerRepo.SavePlayer(ctx, existingPlayer); err != nil {
 			return nil, false, err
 		}
 
 		// Add to this game's player set
-		if err := s.playerRepo.AddPlayerToGame(context.TODO(), gameID, playerID); err != nil {
+		if err := s.playerRepo.AddPlayerToGame(ctx, gameID, playerID); err != nil {
 			return nil, false, err
 		}
 
@@ -150,7 +150,7 @@ func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.
 
 	s.cancelReconnTimer(playerID)
 	existingPlayer.Connect()
-	if err := s.playerRepo.SavePlayer(context.TODO(), existingPlayer); err != nil {
+	if err := s.playerRepo.SavePlayer(ctx, existingPlayer); err != nil {
 		return nil, false, err
 	}
 
@@ -158,13 +158,13 @@ func (s *PlayerService) HandleConnect(gameID entities.GameID, playerID entities.
 }
 
 // HandleDisconnect is called when a player disconnects from WebSocket
-func (s *PlayerService) HandleDisconnect(gameID entities.GameID, playerID entities.PlayerID) error {
-	game, err := s.gameRepo.GetGame(context.TODO(), gameID)
+func (s *PlayerService) HandleDisconnect(ctx context.Context, gameID entities.GameID, playerID entities.PlayerID) error {
+	game, err := s.gameRepo.GetGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
 
-	player, err := s.playerRepo.GetPlayer(context.TODO(), playerID)
+	player, err := s.playerRepo.GetPlayer(ctx, playerID)
 	if err != nil {
 		return err
 	}
@@ -172,10 +172,10 @@ func (s *PlayerService) HandleDisconnect(gameID entities.GameID, playerID entiti
 	switch game.Status {
 	case entities.GameStatusWaiting:
 		// Remove player completely from the game
-		if err := s.playerRepo.RemovePlayerFromGame(context.TODO(), gameID, playerID); err != nil {
+		if err := s.playerRepo.RemovePlayerFromGame(ctx, gameID, playerID); err != nil {
 			return err
 		}
-		if err := s.playerRepo.DeletePlayer(context.TODO(), playerID); err != nil {
+		if err := s.playerRepo.DeletePlayer(ctx, playerID); err != nil {
 			return err
 		}
 
@@ -188,7 +188,7 @@ func (s *PlayerService) HandleDisconnect(gameID entities.GameID, playerID entiti
 			game.HostID = newHostID
 
 			// Get new host's username for notification
-			newHost, err := s.playerRepo.GetPlayer(context.TODO(), newHostID)
+			newHost, err := s.playerRepo.GetPlayer(ctx, newHostID)
 			var newHostUsername string
 			if err == nil && newHost != nil {
 				newHostUsername = newHost.Username
@@ -208,14 +208,14 @@ func (s *PlayerService) HandleDisconnect(gameID entities.GameID, playerID entiti
 			}()
 		}
 
-		if err := s.gameRepo.SaveGame(context.TODO(), game); err != nil {
+		if err := s.gameRepo.SaveGame(ctx, game); err != nil {
 			return err
 		}
 
 	case entities.GameStatusActive:
 		// Mark as disconnected and start reconnection timer
 		player.Disconnect()
-		if err := s.playerRepo.SavePlayer(context.TODO(), player); err != nil {
+		if err := s.playerRepo.SavePlayer(ctx, player); err != nil {
 			return err
 		}
 
@@ -224,7 +224,7 @@ func (s *PlayerService) HandleDisconnect(gameID entities.GameID, playerID entiti
 	case entities.GameStatusEnded:
 		// Game is over, just mark disconnected
 		player.Disconnect()
-		if err := s.playerRepo.SavePlayer(context.TODO(), player); err != nil {
+		if err := s.playerRepo.SavePlayer(ctx, player); err != nil {
 			return err
 		}
 	}
@@ -233,19 +233,19 @@ func (s *PlayerService) HandleDisconnect(gameID entities.GameID, playerID entiti
 }
 
 // GetPlayer retrieves a player by ID
-func (s *PlayerService) GetPlayer(id entities.PlayerID) (*entities.Player, error) {
-	return s.playerRepo.GetPlayer(context.TODO(), id)
+func (s *PlayerService) GetPlayer(ctx context.Context, id entities.PlayerID) (*entities.Player, error) {
+	return s.playerRepo.GetPlayer(ctx, id)
 }
 
 // GetGamePlayers retrieves all players in a game
-func (s *PlayerService) GetGamePlayers(gameID entities.GameID) ([]*entities.Player, error) {
-	return s.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+func (s *PlayerService) GetGamePlayers(ctx context.Context, gameID entities.GameID) ([]*entities.Player, error) {
+	return s.playerRepo.GetPlayersByGame(ctx, gameID)
 }
 
 // CleanupGamePlayers removes all players when a game ends
-func (s *PlayerService) CleanupGamePlayers(gameID entities.GameID) error {
+func (s *PlayerService) CleanupGamePlayers(ctx context.Context, gameID entities.GameID) error {
 	// Cancel all reconnection timers for this game's players
-	players, err := s.playerRepo.GetPlayersByGame(context.TODO(), gameID)
+	players, err := s.playerRepo.GetPlayersByGame(ctx, gameID)
 	if err != nil {
 		return err
 	}
@@ -254,7 +254,7 @@ func (s *PlayerService) CleanupGamePlayers(gameID entities.GameID) error {
 		s.cancelReconnTimer(player.ID)
 	}
 
-	return s.playerRepo.DeleteGamePlayers(context.TODO(), gameID)
+	return s.playerRepo.DeleteGamePlayers(ctx, gameID)
 }
 
 // IsPlayerConnected checks if a player has an active WebSocket session
@@ -293,7 +293,11 @@ func (s *PlayerService) cancelReconnTimer(playerID entities.PlayerID) {
 
 // handleReconnTimeout is called when a player's reconnection window expires
 func (s *PlayerService) handleReconnTimeout(playerID entities.PlayerID, gameID entities.GameID) {
-	player, err := s.playerRepo.GetPlayer(context.TODO(), playerID)
+	// Use background context with timeout for timer-triggered operations
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	player, err := s.playerRepo.GetPlayer(ctx, playerID)
 	if err != nil {
 		return
 	}
@@ -305,7 +309,7 @@ func (s *PlayerService) handleReconnTimeout(playerID entities.PlayerID, gameID e
 
 	// Mark as inactive
 	player.SetInactive()
-	if err := s.playerRepo.SavePlayer(context.TODO(), player); err != nil {
+	if err := s.playerRepo.SavePlayer(ctx, player); err != nil {
 		return
 	}
 
