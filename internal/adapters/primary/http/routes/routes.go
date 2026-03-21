@@ -2,8 +2,8 @@ package routes
 
 import (
 	"net/http"
-	"shamus-backend/internal/infrastructure/controllers"
-	"shamus-backend/internal/infrastructure/middlewares"
+	"shamus-backend/internal/adapters/primary/http/controllers"
+	"shamus-backend/internal/adapters/primary/http/middlewares"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"

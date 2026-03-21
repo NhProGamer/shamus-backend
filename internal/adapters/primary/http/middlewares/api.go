@@ -2,7 +2,7 @@ package middlewares
 
 import (
 	"net/http"
-	"shamus-backend/internal/infrastructure/controllers"
+	"shamus-backend/internal/adapters/primary/http/controllers"
 	"strings"
 
 	"github.com/gin-gonic/gin"
