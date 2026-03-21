@@ -1,8 +1,9 @@
-package app
+package orchestration
 
 import (
 	"context"
 	"encoding/json"
+	"shamus-backend/internal/application/services"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/prompts"
 	apperrors "shamus-backend/internal/domain/errors"
@@ -32,9 +33,9 @@ type WinResult struct {
 type GameEngineV2 struct {
 	gameRepo      ports.GameRepository
 	playerRepo    ports.PlayerRepository
-	promptService *PromptService
-	notifier      *NotificationService
-	nightService  *NightService
+	promptService *services.PromptService
+	notifier      *services.NotificationService
+	nightService  *services.NightService
 
 	// Active group votes
 	activeWerewolfVote *entities.GroupID
@@ -45,9 +46,9 @@ type GameEngineV2 struct {
 func NewGameEngineV2(
 	gameRepo ports.GameRepository,
 	playerRepo ports.PlayerRepository,
-	promptService *PromptService,
-	notifier *NotificationService,
-	nightService *NightService,
+	promptService *services.PromptService,
+	notifier *services.NotificationService,
+	nightService *services.NightService,
 ) *GameEngineV2 {
 	engine := &GameEngineV2{
 		gameRepo:      gameRepo,
@@ -567,7 +568,7 @@ func (e *GameEngineV2) handleWerewolfVoteCallback(prompt *entities.Prompt, respo
 	groupID := *prompt.GroupID
 
 	// Parse group result
-	var result GroupVoteResult
+	var result services.GroupVoteResult
 	if err := json.Unmarshal(response, &result); err != nil {
 		return err
 	}
@@ -723,7 +724,7 @@ func (e *GameEngineV2) handleVillageVoteCallback(prompt *entities.Prompt, respon
 	groupID := *prompt.GroupID
 
 	// Parse group result
-	var result GroupVoteResult
+	var result services.GroupVoteResult
 	if err := json.Unmarshal(response, &result); err != nil {
 		return err
 	}

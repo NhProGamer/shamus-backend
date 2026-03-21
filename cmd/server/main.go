@@ -6,8 +6,9 @@ import (
 	"os"
 	"os/signal"
 	"shamus-backend/internal/adapters/api/ws"
-	"shamus-backend/internal/adapters/app"
 	"shamus-backend/internal/adapters/infra"
+	"shamus-backend/internal/application/orchestration"
+	"shamus-backend/internal/application/services"
 	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/infrastructure/config"
 	"shamus-backend/internal/infrastructure/controllers"
@@ -75,8 +76,8 @@ func main() {
 	voteRepo := infra.NewVoteRepository(rdb)
 
 	// === CORE SERVICES ===
-	gameService := app.NewGameService(gameRepo, playerRepo)
-	chatService := app.NewChatService()
+	gameService := services.NewGameService(gameRepo, playerRepo)
+	chatService := services.NewChatService()
 
 	// === SESSION MANAGER ===
 	// Manages WebSocket sessions and game rooms
@@ -84,11 +85,11 @@ func main() {
 
 	// === NOTIFICATION SERVICE ===
 	// Sends typed notifications to players (server -> client, one-way)
-	notificationService := app.NewNotificationService(sessionManager, sessionManager, playerRepo)
+	notificationService := services.NewNotificationService(sessionManager, sessionManager, playerRepo)
 
 	// === PROMPT SERVICE ===
 	// Handles interactive prompts with timeouts and group voting
-	promptService := app.NewPromptService(sessionManager, notificationService, playerRepo)
+	promptService := services.NewPromptService(sessionManager, notificationService, playerRepo)
 
 	// === COMMAND HANDLER ===
 	// Handles client-initiated commands (chat, settings, start, kick)
@@ -101,7 +102,7 @@ func main() {
 
 	// === PLAYER SERVICE ===
 	// Now we can create PlayerService with wsHandler as ConnectionChecker
-	playerService := app.NewPlayerService(playerRepo, gameRepo, wsHandler)
+	playerService := services.NewPlayerService(playerRepo, gameRepo, wsHandler)
 
 	// Inject PlayerService into WebSocket handler and CommandHandler
 	wsHandler.SetPlayerService(playerService)
@@ -109,12 +110,12 @@ func main() {
 
 	// === GAME ENGINE SERVICES ===
 	// VoteService for legacy compatibility (used by NightService)
-	voteService := app.NewVoteService(voteRepo, sessionManager, sessionManager)
-	nightService := app.NewNightService(sessionManager, voteService)
+	voteService := services.NewVoteService(voteRepo, sessionManager, sessionManager)
+	nightService := services.NewNightService(sessionManager, voteService)
 
 	// === GAME ENGINE V2 ===
 	// Orchestrates game flow using Prompt/Notification architecture
-	gameEngine := app.NewGameEngineV2(
+	gameEngine := orchestration.NewGameEngineV2(
 		gameRepo,
 		playerRepo,
 		promptService,

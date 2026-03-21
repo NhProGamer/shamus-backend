@@ -3,7 +3,7 @@ package ws
 import (
 	"encoding/json"
 	"net/http"
-	"shamus-backend/internal/adapters/app"
+	"shamus-backend/internal/application/services"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/prompts"
 	"shamus-backend/internal/domain/ports"
@@ -18,9 +18,9 @@ import (
 type Handler struct {
 	melody         *melody.Melody
 	sessions       *SessionManager
-	promptService  *app.PromptService
+	promptService  *services.PromptService
 	commandHandler *CommandHandler
-	notifier       *app.NotificationService
+	notifier       *services.NotificationService
 	playerService  ports.PlayerService
 	gameService    ports.GameService
 }
@@ -29,9 +29,9 @@ type Handler struct {
 func NewHandler(
 	m *melody.Melody,
 	sessions *SessionManager,
-	promptService *app.PromptService,
+	promptService *services.PromptService,
 	commandHandler *CommandHandler,
-	notifier *app.NotificationService,
+	notifier *services.NotificationService,
 	gameService ports.GameService,
 ) *Handler {
 	h := &Handler{
@@ -258,13 +258,13 @@ func (h *Handler) handleResponse(s *melody.Session, playerID entities.PlayerID, 
 		// Map errors to appropriate codes
 		code := "RESPONSE_ERROR"
 		switch err {
-		case app.ErrPromptNotFound:
+		case services.ErrPromptNotFound:
 			code = "PROMPT_NOT_FOUND"
-		case app.ErrPromptWrongPlayer:
+		case services.ErrPromptWrongPlayer:
 			code = "WRONG_PLAYER"
-		case app.ErrPromptExpired:
+		case services.ErrPromptExpired:
 			code = "PROMPT_EXPIRED"
-		case app.ErrPromptAlreadyAnswered:
+		case services.ErrPromptAlreadyAnswered:
 			code = "ALREADY_ANSWERED"
 		}
 		h.sendError(s, code, err.Error())

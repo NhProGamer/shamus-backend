@@ -3,7 +3,7 @@ package ws
 import (
 	"encoding/json"
 	"errors"
-	"shamus-backend/internal/adapters/app"
+	"shamus-backend/internal/application/services"
 	"shamus-backend/internal/domain/constants"
 	"shamus-backend/internal/domain/entities"
 	"shamus-backend/internal/domain/entities/commands"
@@ -17,7 +17,7 @@ type CommandHandler struct {
 	gameService   ports.GameService
 	playerService ports.PlayerService
 	chatService   ports.ChatService
-	notifier      *app.NotificationService
+	notifier      *services.NotificationService
 	gameEngine    ports.GameEngine
 }
 
@@ -26,7 +26,7 @@ func NewCommandHandler(
 	gameService ports.GameService,
 	playerService ports.PlayerService,
 	chatService ports.ChatService,
-	notifier *app.NotificationService,
+	notifier *services.NotificationService,
 ) *CommandHandler {
 	return &CommandHandler{
 		gameService:   gameService,
