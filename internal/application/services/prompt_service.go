@@ -39,6 +39,58 @@ type GroupVoteState struct {
 	TiedTargets   []entities.PlayerID
 }
 
+// Copy returns a deep copy of the GroupVoteState
+func (s *GroupVoteState) Copy() *GroupVoteState {
+	if s == nil {
+		return nil
+	}
+
+	// Copy slices
+	voters := make([]entities.PlayerID, len(s.Voters))
+	copy(voters, s.Voters)
+
+	tiedTargets := make([]entities.PlayerID, len(s.TiedTargets))
+	copy(tiedTargets, s.TiedTargets)
+
+	// Copy maps
+	votes := make(map[entities.PlayerID]*entities.PlayerID, len(s.Votes))
+	for k, v := range s.Votes {
+		if v == nil {
+			votes[k] = nil
+		} else {
+			vCopy := *v
+			votes[k] = &vCopy
+		}
+	}
+
+	promptIDs := make(map[entities.PlayerID]entities.PromptID, len(s.PromptIDs))
+	for k, v := range s.PromptIDs {
+		promptIDs[k] = v
+	}
+
+	// Copy MayorID pointer
+	var mayorID *entities.PlayerID
+	if s.MayorID != nil {
+		mayorIDCopy := *s.MayorID
+		mayorID = &mayorIDCopy
+	}
+
+	return &GroupVoteState{
+		GroupID:       s.GroupID,
+		GameID:        s.GameID,
+		Context:       s.Context,
+		Voters:        voters,
+		Votes:         votes,
+		PromptIDs:     promptIDs,
+		ExpiresAt:     s.ExpiresAt,
+		Resolved:      s.Resolved,
+		HasMayor:      s.HasMayor,
+		MayorID:       mayorID,
+		AwaitingMayor: s.AwaitingMayor,
+		TiedTargets:   tiedTargets,
+	}
+}
+
 // PromptService manages prompts with timeouts and group voting
 type PromptService struct {
 	prompts       map[entities.PromptID]*entities.Prompt
@@ -537,13 +589,17 @@ func (s *PromptService) HasEveryoneVoted(groupID entities.GroupID) bool {
 	return len(groupState.Votes) == len(groupState.Voters)
 }
 
-// GetGroupState returns the current state of a group vote (for inspection)
+// GetGroupState returns a deep copy of the current state of a group vote (for inspection).
+// Callers can safely modify the returned state without affecting internal state.
 func (s *PromptService) GetGroupState(groupID entities.GroupID) (*GroupVoteState, bool) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
 	state, exists := s.groupStates[groupID]
-	return state, exists
+	if !exists {
+		return nil, false
+	}
+	return state.Copy(), true
 }
 
 // --- Internal helpers ---
