@@ -177,7 +177,17 @@ func (s *VoteService) ResolveVote(gameID entities.GameID) (*entities.VoteResult,
 		return nil, apperrors.ErrVoteNotFound
 	}
 
+	// Check if already resolved to prevent double resolution
+	if vote.Status == entities.VoteStatusResolved {
+		return vote.Result, nil
+	}
+
 	result := vote.Resolve()
+
+	// Save the vote with its new resolved status
+	if err := s.voteRepo.SaveVote(ctx, gameID, vote); err != nil {
+		return nil, err
+	}
 
 	// Broadcast vote end event with result
 	s.broadcastVoteEvent(gameID, events.NewVoteEvent(events.EndVote, nil, result.Target))
